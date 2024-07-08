@@ -9,7 +9,7 @@
       ./modules/xray.nix
       ./modules/vless.nix
       ./modules/ss2022.nix
-      ./modules/s-legacy.nix
+      ./modules/ss-legacy.nix
       ./modules/socks5.nix
     ];
   };

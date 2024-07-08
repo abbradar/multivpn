@@ -33,7 +33,7 @@ in {
       dev ${dev}
       dev-type tun
       topology subnet
-      server ${cfg.openvpn.subnet} 255.255.255.0
+      server ${cfg.subnet} 255.255.255.0
 
       persist-tun
       persist-key
@@ -45,7 +45,7 @@ in {
       cert /var/lib/openvpn-server/server.crt
       ca /var/lib/openvpn-server/ca.crt
       tls-auth /var/lib/openvpn-server/ta.key 0
-      dh ${escapeShellArg config.security.dhparams.path}/openvpn.pem
+      dh ${config.security.dhparams.path}/openvpn.pem
       duplicate-cn
       cipher AES-256-GCM
 
@@ -58,16 +58,12 @@ in {
       params.openvpn = 2048;
     };
 
-    systemd.services.openvpn-server = {
-      after = ["init-openvpn-server.service"];
-      requires = ["init-openvpn-server.service"];
-    };
     systemd.services.init-openvpn-server = {
       description = "Generate secrets for the OpenVPN server.";
       before = ["openvpn-server.service"];
-      wantedBy = ["multi-user.target"];
+      wantedBy = ["multi-user.target" "openvpn-server.service"];
       path = with pkgs; [easyrsa openvpn];
-      environment.EASYRSA_BATCH = true;
+      environment.EASYRSA_BATCH = "1";
       serviceConfig = {
         Type = "oneshot";
         User = "openvpn";
@@ -98,7 +94,10 @@ in {
     };
 
     users = {
-      users.openvpn.group = "openvpn";
+      users.openvpn = {
+        isSystemUser = true;
+        group = "openvpn";
+      };
       groups.openvpn = {};
     };
   };
