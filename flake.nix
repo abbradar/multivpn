@@ -1,16 +1,16 @@
 {
   outputs = {...}: {
     nixosModules.default.imports = [
-      ./common.nix
-      ./iodine.nix
-      ./mtprotoproxy.nix
-      ./openvpn.nix
-      ./wireguard.nix
-      ./xray.nix
-      ./vless.nix
-      ./ss2022.nix
-      ./ss-legacy.nix
-      ./socks5.nix
+      ./modules/common.nix
+      ./modules/iodine.nix
+      ./modules/mtprotoproxy.nix
+      ./modules/openvpn.nix
+      ./modules/wireguard.nix
+      ./modules/xray.nix
+      ./modules/vless.nix
+      ./modules/ss2022.nix
+      ./smodules/s-legacy.nix
+      ./modules/socks5.nix
     ];
   };
 }
