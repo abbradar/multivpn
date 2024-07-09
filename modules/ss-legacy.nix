@@ -68,10 +68,10 @@ in {
           > ss-legacy/credentials.json
 
         encoded=$(echo -n "$encryption:$password" | base64 -w0)
-        echo "ss://$encoded@$domain:$port" > ss-legacy/link.url
+        echo "ss://$encoded@$domain:$port#$domain" > ss-legacy/link.url
 
         outline_encoded=$(echo -n "$encryption:$password@$domain:$port" | base64 -w0)
-        echo "ss://$outline_encoded" > ss-legacy/outline_link.url
+        echo "ss://$outline_encoded#$domain" > ss-legacy/outline_link.url
       '';
     };
   };

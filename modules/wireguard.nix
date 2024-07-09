@@ -40,7 +40,7 @@ in {
 
       ip = mkOption {
         type = types.str;
-        default = "10.0.174.0";
+        default = "10.0.174.1";
         description = "Network subnet that OpenVPN uses.";
       };
 

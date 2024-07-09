@@ -29,6 +29,8 @@ with lib; let
     ca ca.crt
     tls-auth ta.key 1
     cipher AES-256-GCM
+
+    redirect-gateway autolocal
   '';
 in {
   options = {

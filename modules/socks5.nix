@@ -8,6 +8,7 @@ with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.socks5;
   port = 1080;
+  user = "anonymous";
 in {
   options = {
     multivpn.socks5 = {
@@ -33,8 +34,8 @@ in {
             auth = "password";
             accounts = [
               {
-                user = "anonymous";
-                password = cfg.password;
+                inherit user;
+                pass = cfg.password;
               }
             ];
             udp = true;
@@ -57,14 +58,19 @@ in {
       script = ''
         mkdir -p socks5
         domain=${escapeShellArg rootCfg.domain}
+        user=${escapeShellArg user}
         port=${toString port}
         password=${escapeShellArg cfg.password}
+
         jq -n \
           --arg domain "$domain" \
           --argjson port "$port" \
+          --arg user "$user" \
           --arg password "$password" \
-          '{host: $domain, port: $port, password: $password}' \
+          '{host: $domain, port: $port, user: $user, password: $password}' \
           > socks5/credentials.json
+
+        echo "socks5h://$user:$password@$domain:$port" > socks5/proxy.url
       '';
     };
   };

@@ -21,10 +21,10 @@ in {
         description = "Subdomain for iodine.";
       };
 
-      subnet = mkOption {
+      ip = mkOption {
         type = types.str;
-        default = "10.0.176.0";
-        description = "Network subnet that Iodine uses.";
+        default = "10.0.176.1";
+        description = "IP address that Iodine uses.";
       };
 
       passwordFile = mkOption {
@@ -45,7 +45,7 @@ in {
     services.iodine.server = {
       enable = true;
       domain = domain;
-      ip = "${cfg.subnet}/24";
+      ip = "${cfg.ip}/24";
       passwordFile = cfg.passwordFile;
       extraConfig = "-c -d ${escapeShellArg dev}";
     };

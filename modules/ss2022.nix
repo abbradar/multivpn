@@ -68,7 +68,7 @@ in {
           > ss2022/credentials.json
 
         encoded=$(echo -n "$encryption:$key" | base64 -w0)
-        echo "ss://$encoded@$domain:$port" > ss2022/link.url
+        echo "ss://$encoded@$domain:$port#$domain" > ss2022/link.url
       '';
     };
   };
