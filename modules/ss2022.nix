@@ -5,8 +5,10 @@
   ...
 }:
 with lib; let
-  cfg = config.multivpn.ss2022;
+  rootCfg = config.multivpn;
+  cfg = rootCfg.ss2022;
   port = 8389;
+  encryption = "2022-blake3-aes-256-gcm";
 in {
   options = {
     multivpn.ss2022 = {
@@ -14,12 +16,12 @@ in {
 
       key = mkOption {
         type = types.str;
-        description = "User key.";
+        description = "A random Base64-encoded 32 byte value. Generate with `openssl rand -base64 32`";
       };
     };
   };
 
-  config = mkIf (config.multivpn.enable && cfg.enable) {
+  config = mkIf (rootCfg.enable && cfg.enable) {
     networking.firewall = {
       allowedTCPPorts = [port];
       allowedUDPPorts = [port];
@@ -32,12 +34,42 @@ in {
           port = port;
           protocol = "shadowsocks";
           settings = {
-            method = "2022-blake3-aes-256-gcm";
+            method = encryption;
             password = cfg.key;
             network = "tcp,udp";
           };
         }
       ];
+    };
+
+    systemd.services.vpn-credentials-ss2022 = {
+      description = "Prepare the client credentials for the Shadowsocks 2022 proxy.";
+      wantedBy = ["multi-user.target"];
+      path = with pkgs; [jq];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "vpn-credentials";
+        StateDirectoryMode = "0700";
+        WorkingDirectory = "/var/lib/vpn-credentials";
+      };
+      script = ''
+        mkdir -p ss2022
+        domain=${escapeShellArg rootCfg.domain}
+        port=${toString port}
+        encryption=${escapeShellArg encryption}
+        key=${escapeShellArg cfg.key}
+
+        jq -n \
+          --arg domain "$domain" \
+          --argjson port "$port" \
+          --arg encryption "$encryption" \
+          --arg key "$key" \
+          '{host: $domain, port: $port, encryption: $encryption, key: $key}' \
+          > ss2022/credentials.json
+
+        encoded=$(echo -n "$encryption:$key" | base64 -w0)
+        echo "ss://$encoded$domain:$port" > ss2022/link.url
+      '';
     };
   };
 }

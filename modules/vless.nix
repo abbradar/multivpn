@@ -14,7 +14,7 @@ in {
 
       id = mkOption {
         type = types.str;
-        description = "Authorization ID.";
+        description = "UUID for authorization. Generate with `uuidgen`";
       };
     };
   };

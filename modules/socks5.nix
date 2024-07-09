@@ -13,15 +13,9 @@ in {
     multivpn.socks5 = {
       enable = mkEnableOption "SOCKS5 support";
 
-      user = mkOption {
-        type = types.str;
-        default = "anonymous";
-        description = "User password.";
-      };
-
       password = mkOption {
         type = types.str;
-        description = "User password.";
+        description = "Proxy password. Generate with `tr -dc A-Za-z0-9 </dev/urandom | head -c 32`";
       };
     };
   };
@@ -39,7 +33,7 @@ in {
             auth = "password";
             accounts = [
               {
-                user = cfg.user;
+                user = "anonymous";
                 password = cfg.password;
               }
             ];
@@ -48,6 +42,30 @@ in {
           };
         }
       ];
+    };
+
+    systemd.services.vpn-credentials-socks5 = {
+      description = "Prepare the client credentials for the SOCKS5 proxy.";
+      wantedBy = ["multi-user.target"];
+      path = with pkgs; [jq];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "vpn-credentials";
+        StateDirectoryMode = "0700";
+        WorkingDirectory = "/var/lib/vpn-credentials";
+      };
+      script = ''
+        mkdir -p socks5
+        domain=${escapeShellArg rootCfg.domain}
+        port=${toString port}
+        password=${escapeShellArg cfg.password}
+        jq -n \
+          --arg domain "$domain" \
+          --argjson port "$port" \
+          --arg password "$password" \
+          '{host: $domain, port: $port, password: $password}' \
+          > socks5/credentials.json
+      '';
     };
   };
 }

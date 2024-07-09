@@ -4,23 +4,36 @@
   ...
 }:
 with lib; let
-  dev = "vpn-dns";
+  rootCfg = config.multivpn;
+  cfg = rootCfg.iodine;
 
-  cfg = config.multivpn.iodine;
+  dev = "vpn-dns";
+  domain = "${cfg.subdomain}.${rootCfg.domain}";
 in {
   options = {
     multivpn.iodine = {
       enable = mkEnableOption "Iodine support";
+
+      subdomain = mkOption {
+        type = types.str;
+        default = "t";
+        description = "Subdomain for iodine.";
+      };
 
       subnet = mkOption {
         type = types.str;
         default = "10.0.176.0";
         description = "Network subnet that Iodine uses.";
       };
+
+      passwordFile = mkOption {
+        type = types.path;
+        description = "File containing the password. Generate with `tr -dc A-Za-z0-9 </dev/urandom | head -c 32`";
+      };
     };
   };
 
-  config = mkIf (config.multivpn.enable && cfg.enable) {
+  config = mkIf (rootCfg.enable && cfg.enable) {
     multivpn.vpnInterfaces = [dev];
 
     networking.firewall = {
@@ -30,9 +43,32 @@ in {
 
     services.iodine.server = {
       enable = true;
-      domain = rootCfg.domain;
+      domain = domain;
       ip = "${cfg.subnet}/24";
+      passwordFile = cfg.passwordFile;
       extraConfig = "-c -d ${escapeShellArg dev}";
+    };
+
+    systemd.services.vpn-credentials-iodine = {
+      description = "Prepare the client credentials for iodine.";
+      wantedBy = ["multi-user.target"];
+      path = with pkgs; [jq];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "vpn-credentials";
+        StateDirectoryMode = "0700";
+        WorkingDirectory = "/var/lib/vpn-credentials";
+      };
+      script = ''
+        mkdir -p iodine
+        domain=${escapeShellArg domain}
+        password=$(cat ${escapeShellArg cfg.passwordFile})
+        jq -n \
+          --arg domain "$domain" \
+          --arg password "$password" \
+          '{domain: $domain, password: $password}' \
+          > iodine/credentials.json
+      '';
     };
   };
 }

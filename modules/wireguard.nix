@@ -1,10 +1,12 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 with lib; let
-  cfg = config.multivpn.wireguard;
+  rootCfg = config.multivpn;
+  cfg = rootCfg.wireguard;
 
   dev = "vpn-wg";
   port = 51820;
@@ -21,7 +23,7 @@ with lib; let
       publicKey = mkOption {
         type = types.str;
         description = ''
-          Peer's public key.
+          Peer's public key. Generate the private key with `wg genkey`, then get the public key with `wg pubkey`.
         '';
       };
     };
@@ -44,7 +46,7 @@ in {
 
       privateKeyFile = mkOption {
         type = types.path;
-        description = "WireGuard private key path.";
+        description = "WireGuard private key path. Generate with `wg genkey`";
       };
 
       peers = mkOption {
@@ -55,7 +57,7 @@ in {
     };
   };
 
-  config = mkIf (config.multivpn.enable && cfg.enable) {
+  config = mkIf (rootCfg.enable && cfg.enable) {
     multivpn.vpnInterfaces = [dev];
 
     networking = {
@@ -67,6 +69,35 @@ in {
         listenPort = port;
         peers = map mkPeer cfg.peers;
       };
+    };
+
+    systemd.services.vpn-credentials-wireguard = {
+      description = "Prepare the client credentials for Wireguard.";
+      wantedBy = ["multi-user.target"];
+      path = with pkgs; [wireguard-tools];
+      serviceConfig = {
+        Type = "oneshot";
+        StateDirectory = "vpn-credentials";
+        StateDirectoryMode = "0700";
+        WorkingDirectory = "/var/lib/vpn-credentials";
+      };
+      script = ''
+        mkdir -p wireguard
+        domain=${escapeShellArg rootCfg.domain}
+        port=${toString port}
+        public=$(wg pubkey < ${escapeShellArg cfg.privateKeyFile})
+        cat > wireguard/wg.conf <<EOF
+        [Interface]
+        PrivateKey = <private key>
+        Address = <ip>/32
+
+        [Peer]
+        Endpoint = $domain:$port
+        PublicKey = $public
+        AllowedIPs = 0.0.0.0/0
+        PersistentKeepalive = 25
+        EOF
+      '';
     };
   };
 }
