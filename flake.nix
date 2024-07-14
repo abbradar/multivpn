@@ -1,4 +1,8 @@
 {
+  inputs = {
+    flake-compat.url = "github:edolstra/flake-compat";
+  };
+
   outputs = {...}: {
     nixosModules.default.imports = [
       ./modules/common.nix

@@ -1,3 +1,5 @@
+{ pkgs, ... }:
+
 {
   multivpn = {
     # After deployed, you can find all the VPN server keys in `/var/lib/vpn-credentials`.
