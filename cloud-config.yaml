@@ -1,0 +1,30 @@
+#cloud-config
+write_files:
+- path: /etc/nixos/vpn.nix
+  permissions: '0644'
+  content: |
+    {pkgs, ...}:
+
+    {
+      imports = [
+        (import (builtins.fetchTarball "https://github.com/abbradar/multivpn/archive/master.tar.gz")).nixosModules.default
+      ];
+
+      services.cloud-init.enable = true;
+
+      environment.systemPackages = with pkgs; [
+        # You can add more packages from https://search.nixos.org/packages
+        wireguard-tools
+        openssl
+      ];
+
+      # Copy the contents of ./example-configuration.nix from the repository
+      # to this file.
+    }
+runcmd:
+  - |
+    # Replace with your hosting provider, see https://github.com/elitak/nixos-infect
+    export PROVIDER=hetznercloud
+    export NIX_CHANNEL=nixos-unstable 
+    export NIXOS_IMPORT=./vpn.nix
+    curl https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | bash 2>&1 | tee /tmp/infect.log
