@@ -7,7 +7,7 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.ss2022;
-  port = 8389;
+  port = 8189;
   encryption = "2022-blake3-aes-256-gcm";
 in {
   options = {

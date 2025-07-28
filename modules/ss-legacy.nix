@@ -7,7 +7,7 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.ss-legacy;
-  port = 8388;
+  port = 8188;
   encryption = "aes-256-gcm";
 in {
   options = {
