@@ -147,7 +147,13 @@ in {
       '';
     };
 
-    security.acme.certs.${rootCfg.domain}.webroot = "/var/lib/acme/acme-challenge";
+    security.acme.certs.${rootCfg.domain} = {
+      webroot = "/var/lib/acme/acme-challenge";
+
+      postRun = ''
+        ${config.systemd.package}/bin/systemctl restart xray
+      '';
+    };
 
     systemd.services = {
       xray = {
