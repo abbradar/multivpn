@@ -52,10 +52,12 @@ with lib; let
   };
 
   xrayClientConfigFile = pkgs.writeText "xray-client.json" (builtins.toJSON xrayClientConfig);
+
+  link = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=tls&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
 in {
   options = {
     multivpn.vless = {
-      enable = mkEnableOption "VLESS support";
+      enable = mkEnableOption "VLESS XTLS support";
 
       id = mkOption {
         type = types.str;
@@ -169,7 +171,7 @@ in {
       };
 
       vpn-credentials-vless = {
-        description = "Prepare the client credentials for the VLESS proxy.";
+        description = "Prepare the client credentials for the VLESS XTLS proxy.";
         wantedBy = ["multi-user.target"];
         path = with pkgs; [jq];
         serviceConfig = {
@@ -180,23 +182,10 @@ in {
         };
         script = ''
           mkdir -p vless
-          domain=${escapeShellArg rootCfg.domain}
-          port=${toString port}
-          flow=${escapeShellArg flow}
-          id=${escapeShellArg cfg.id}
-
-          jq -n \
-            --arg domain "$domain" \
-            --argjson port "$port" \
-            --arg flow "$flow" \
-            --arg id "$id" \
-            '{host: $domain, port: $port, flow: $flow, id: $id, security: "tls"}' \
-            > vless/credentials.json
 
           # Pretty-print.
           jq . < ${xrayClientConfigFile} > vless/xray-client.json
-
-          echo "vless://$id@$domain:$port?security=tls&fp=chrome&type=tcp&flow=xtls-rprx-vision#$domain" > vless/link.url
+          echo ${escapeShellArg link} > vless/link.url
         '';
       };
     };

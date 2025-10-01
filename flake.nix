@@ -12,6 +12,7 @@
       ./modules/wireguard.nix
       ./modules/xray.nix
       ./modules/vless.nix
+      ./modules/vless-reality.nix
       ./modules/ss2022.nix
       ./modules/ss-legacy.nix
       ./modules/socks5.nix
