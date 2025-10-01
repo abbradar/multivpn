@@ -153,7 +153,7 @@ in {
           domain=${escapeShellArg rootCfg.domain}
           port=${toString amneziaPort}
           public=$(awg pubkey < ${escapeShellArg cfg.privateKeyFile})
-          cat > wireguard/wg.conf <<EOF
+          cat > amneziawg/wg.conf <<EOF
           [Interface]
           PrivateKey = <private key>
           Address = <ip>/32
