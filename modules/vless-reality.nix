@@ -143,13 +143,13 @@ in {
           WorkingDirectory = "/var/lib/vpn-credentials";
         };
         script = ''
-                 set -o pipefail
-                 mkdir -p vless-reality
+          set -o pipefail
+          mkdir -p vless-reality
           publicKey=$(xray x25519 -i ${escapeShellArg cfg.privateKey} | sed -n 's,^Public key: ,,p')
 
-                 jq --arg publicKey "$publicKey" '
+          jq --arg publicKey "$publicKey" '
             .outbounds[0].streamSettings.realitySettings.publicKey = $publicKey
-          ' < ${xrayClientConfigFile} > vless-reality/xray-client.json
+          ' ${xrayClientConfigFile} > vless-reality/xray-client.json
         '';
       };
     };

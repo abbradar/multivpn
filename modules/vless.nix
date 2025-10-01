@@ -184,7 +184,7 @@ in {
           mkdir -p vless
 
           # Pretty-print.
-          jq . < ${xrayClientConfigFile} > vless/xray-client.json
+          jq . ${xrayClientConfigFile} > vless/xray-client.json
           echo ${escapeShellArg link} > vless/link.url
         '';
       };
