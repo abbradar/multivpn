@@ -137,6 +137,35 @@ in {
           peers = concatMap (mkPeer (peer: peer.amneziaIp)) cfg.peers;
         };
       };
+
+      systemd.services.vpn-credentials-amneziawg = {
+        description = "Prepare the client credentials for AmneziaWG.";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [amneziawg-tools];
+        serviceConfig = {
+          Type = "oneshot";
+          StateDirectory = "vpn-credentials";
+          StateDirectoryMode = "0700";
+          WorkingDirectory = "/var/lib/vpn-credentials";
+        };
+        script = ''
+          mkdir -p amneziawg
+          domain=${escapeShellArg rootCfg.domain}
+          port=${toString amneziaPort}
+          public=$(awg pubkey < ${escapeShellArg cfg.privateKeyFile})
+          cat > wireguard/wg.conf <<EOF
+          [Interface]
+          PrivateKey = <private key>
+          Address = <ip>/32
+
+          [Peer]
+          Endpoint = $domain:$port
+          PublicKey = $public
+          AllowedIPs = 0.0.0.0/0
+          PersistentKeepalive = 25
+          EOF
+        '';
+      };
     })
   ]);
 }
