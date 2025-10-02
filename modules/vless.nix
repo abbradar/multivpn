@@ -12,6 +12,8 @@ with lib; let
   flow = "xtls-rprx-vision";
 
   xrayClientConfig = {
+    remarks = rootCfg.domain;
+
     inbounds = [
       {
         listen = "127.0.0.1";
@@ -53,7 +55,7 @@ with lib; let
 
   xrayClientConfigFile = pkgs.writeText "xray-client.json" (builtins.toJSON xrayClientConfig);
 
-  link = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=tls&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
+  link = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=tls&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
 in {
   options = {
     multivpn.vless = {

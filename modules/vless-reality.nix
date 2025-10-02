@@ -11,7 +11,11 @@ with lib; let
   port = 443;
   flow = "xtls-rprx-vision";
 
+  sni = head cfg.serverNames;
+
   xrayClientConfig = {
+    remarks = rootCfg.domain;
+
     inbounds = [
       {
         listen = "127.0.0.1";
@@ -46,7 +50,7 @@ with lib; let
           security = "reality";
           realitySettings = {
             fingerprint = "chrome";
-            serverName = head cfg.serverNames;
+            serverName = sni;
             shortId = "";
           };
         };
@@ -56,6 +60,8 @@ with lib; let
   };
 
   xrayClientConfigFile = pkgs.writeText "xray-client.json" (builtins.toJSON xrayClientConfig);
+
+  linkPrefix = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=reality&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=${sni}";
 in {
   options = {
     multivpn.vless-reality = {
@@ -145,11 +151,12 @@ in {
         script = ''
           set -o pipefail
           mkdir -p vless-reality
-          publicKey=$(xray x25519 -i ${escapeShellArg cfg.privateKey} | sed -n 's,^Public key: ,,p')
+          publicKey=$(xray x25519 -i ${escapeShellArg cfg.privateKey} | sed -n 's,^Password: ,,p')
 
           jq --arg publicKey "$publicKey" '
             .outbounds[0].streamSettings.realitySettings.publicKey = $publicKey
           ' ${xrayClientConfigFile} > vless-reality/xray-client.json
+          echo ${escapeShellArg linkPrefix}"&pbk=$publicKey#"${escapeShellArg rootCfg.domain} > vless-reality/link.url
         '';
       };
     };
