@@ -7,7 +7,6 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.socks5;
-  port = 1080;
   user = "anonymous";
 in {
   options = {
@@ -18,17 +17,23 @@ in {
         type = types.str;
         description = "Proxy password. Generate with `tr -dc A-Za-z0-9 </dev/urandom | head -c 32`";
       };
+
+      port = mkOption {
+        type = types.int;
+        default = 1080;
+        description = "Port to listen on.";
+      };
     };
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
-    networking.firewall.allowedTCPPorts = [port];
+    networking.firewall.allowedTCPPorts = [cfg.port];
 
     multivpn.services.xray = {
       enable = true;
       inbounds = [
         {
-          port = port;
+          port = cfg.port;
           protocol = "socks";
           settings = {
             auth = "password";
@@ -59,7 +64,7 @@ in {
         mkdir -p socks5
         domain=${escapeShellArg rootCfg.domain}
         user=${escapeShellArg user}
-        port=${toString port}
+        port=${toString cfg.port}
         password=${escapeShellArg cfg.password}
 
         jq -n \

@@ -7,7 +7,6 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.ss2022;
-  port = 8189;
   encryption = "2022-blake3-aes-256-gcm";
 in {
   options = {
@@ -18,20 +17,26 @@ in {
         type = types.str;
         description = "A random Base64-encoded 32 byte value. Generate with `openssl rand -base64 32`";
       };
+
+      port = mkOption {
+        type = types.int;
+        default = 8189;
+        description = "Port to listen on.";
+      };
     };
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
     networking.firewall = {
-      allowedTCPPorts = [port];
-      allowedUDPPorts = [port];
+      allowedTCPPorts = [cfg.port];
+      allowedUDPPorts = [cfg.port];
     };
 
     multivpn.services.xray = {
       enable = true;
       inbounds = [
         {
-          port = port;
+          port = cfg.port;
           protocol = "shadowsocks";
           settings = {
             method = encryption;
@@ -55,7 +60,7 @@ in {
       script = ''
         mkdir -p ss2022
         domain=${escapeShellArg rootCfg.domain}
-        port=${toString port}
+        port=${toString cfg.port}
         encryption=${escapeShellArg encryption}
         key=${escapeShellArg cfg.key}
 

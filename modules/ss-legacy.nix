@@ -7,7 +7,6 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.ss-legacy;
-  port = 8188;
   encryption = "aes-256-gcm";
 in {
   options = {
@@ -18,20 +17,26 @@ in {
         type = types.str;
         description = "Proxy password. Generate with `tr -dc A-Za-z0-9 </dev/urandom | head -c 32`";
       };
+
+      port = mkOption {
+        type = types.int;
+        default = 8188;
+        description = "Port to listen on.";
+      };
     };
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
     networking.firewall = {
-      allowedTCPPorts = [port];
-      allowedUDPPorts = [port];
+      allowedTCPPorts = [cfg.port];
+      allowedUDPPorts = [cfg.port];
     };
 
     multivpn.services.xray = {
       enable = true;
       inbounds = [
         {
-          port = port;
+          port = cfg.port;
           protocol = "shadowsocks";
           settings = {
             method = encryption;
@@ -55,7 +60,7 @@ in {
       script = ''
         mkdir -p ss-legacy
         domain=${escapeShellArg rootCfg.domain}
-        port=${toString port}
+        port=${toString cfg.port}
         encryption=${escapeShellArg encryption}
         password=${escapeShellArg cfg.password}
 
