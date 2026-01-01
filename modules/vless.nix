@@ -20,10 +20,6 @@ with lib; let
         port = 1080;
         protocol = "socks";
         settings.udp = true;
-        sniffing = {
-          enabled = true;
-          destOverride = ["http" "tls"];
-        };
       }
     ];
 
