@@ -7,13 +7,25 @@
 with lib; let
   cfg = config.multivpn.services.xray;
   addresses = import ./addresses.nix;
+
+  inboundModule = {...}: {
+    freeformType = types.attrs;
+
+    options = {
+      sniffing.enabled = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether to enable traffic sniffing.";
+      };
+    };
+  };
 in {
   options = {
     multivpn.services.xray = {
       enable = mkEnableOption "XRay service";
 
       inbounds = mkOption {
-        type = types.listOf types.attrs;
+        type = types.listOf (types.submodule inboundModule);
         default = [];
         description = "Inbound listeners.";
       };
