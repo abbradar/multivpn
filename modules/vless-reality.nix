@@ -144,7 +144,7 @@ in {
           {
             addr = "127.0.0.1";
             port = 8003;
-            tls = true;
+            ssl = true;
             proxyProtocol = true;
           }
         ];
