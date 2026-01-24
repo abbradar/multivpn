@@ -11,6 +11,7 @@ with lib; let
     options = {
       address = mkOption {
         type = types.str;
+        example = "[::]";
         description = "Address to listen on.";
       };
 
@@ -21,9 +22,41 @@ with lib; let
 
       destination = mkOption {
         type = types.str;
-        description = "Destination address to forward to.";
+        example = "example.com";
+        description = "Destination host to forward to.";
+      };
+
+      destinationPort = mkOption {
+        type = types.int;
+        description = "Destination port to forward to.";
       };
     };
+  };
+
+  mkSystemdUnit = iface: extraOpts: {
+    path = with pkgs; [getent gawk udp2raw];
+    wantedBy = ["multi-user.target"];
+    wants = ["network.target"];
+    after = ["network.target"];
+    serviceConfig = {
+      Restart = "always";
+      RestartSec = 5;
+    };
+    script = ''
+      destination=$(getent hosts ${escapeShellArg iface.destination} | awk '{ if ($1 ~ /:/) { print "[" $1 "]" } else { print $1 }; exit }')
+      if [ -z "$destination" ]; then
+        echo "Failed to resolve "${escapeShellArg iface.destination}
+        exit 1
+      fi
+
+      exec udp2raw \
+        -l ${escapeShellArg iface.address}:${toString iface.port} \
+        -r "$destination":${toString iface.destinationPort} \
+        -a \
+        --mtu-warn 1500 \
+        --cipher-mode none \
+        --auth-mode none ${concatMapStringsSep " " escapeShellArg extraOpts}
+    '';
   };
 in {
   options = {
@@ -63,60 +96,17 @@ in {
   config = {
     systemd.services = mkMerge [
       (mapAttrs' (name: iface:
-        nameValuePair "udp2raw-server-${name}" {
-          description = "UDP2RAW server for ${name}.";
-          wantedBy = ["multi-user.target"];
-          wants = ["network.target"];
-          after = ["network.target"];
-          serviceConfig = {
-            Restart = "always";
-            RestartSec = 5;
-            # We effectively disable mtu-warn.
-            ExecStart = [
-              "${pkgs.udp2raw}/bin/udp2raw"
-              "-s"
-              "-l"
-              "${iface.address}:${toString iface.port}"
-              "-r"
-              iface.destination
-              "-a"
-              "--mtu-warn"
-              "1500"
-              "--cipher-mode"
-              "none"
-              "--auth-mode"
-              "none"
-            ];
-          };
-        })
+        nameValuePair "udp2raw-server-${name}" (mkSystemdUnit iface ["-s"]
+          // {
+            description = "UDP2RAW server for ${name}.";
+          }))
       cfg.servers)
 
       (mapAttrs' (name: iface:
-        nameValuePair "udp2raw-client-${name}" {
-          description = "UDP2RAW client for ${name}.";
-          wantedBy = ["multi-user.target"];
-          wants = ["network.target"];
-          after = ["network.target"];
-          serviceConfig = {
-            Restart = "always";
-            RestartSec = 5;
-            ExecStart = [
-              "${pkgs.udp2raw}/bin/udp2raw"
-              "-c"
-              "-l"
-              "${iface.address}:${toString iface.port}"
-              "-r"
-              iface.destination
-              "-a"
-              "--mtu-warn"
-              "1500"
-              "--cipher-mode"
-              "none"
-              "--auth-mode"
-              "none"
-            ];
-          };
-        })
+        nameValuePair "udp2raw-client-${name}" (mkSystemdUnit iface ["-c"]
+          // {
+            description = "UDP2RAW client for ${name}.";
+          }))
       cfg.clients)
     ];
   };
