@@ -7,7 +7,7 @@
 with lib; let
   cfg = config.multivpn.udp2raw;
 
-  instanceModule = types.submodule {
+  instanceModule = {
     options = {
       address = mkOption {
         type = types.str;
@@ -29,13 +29,19 @@ in {
   options = {
     multivpn.udp2raw = {
       servers = mkOption {
-        type = types.attrsOf instanceModule;
+        type = types.attrsOf (types.submodule [
+          instanceModule
+          {options.address.default = "[::]";}
+        ]);
         default = {};
         description = "UDP2RAW servers.";
       };
 
       clients = mkOption {
-        type = types.attrsOf instanceModule;
+        type = types.attrsOf (types.submodule [
+          instanceModule
+          {options.address.default = "[::1]";}
+        ]);
         default = {};
         description = "UDP2RAW clients.";
       };

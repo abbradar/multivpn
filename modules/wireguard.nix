@@ -12,10 +12,17 @@ with lib; let
 
   peerModule = {...}: {
     options = {
-      ip = mkOption {
-        type = types.str;
+      ipv4 = mkOption {
+        type = types.nullOr types.str;
         description = ''
-          Peer's private IP address.
+          Peer's private IPv4 address.
+        '';
+      };
+
+      ipv6 = mkOption {
+        type = types.nullOr types.str;
+        description = ''
+          Peer's private IPv6 address.
         '';
       };
 
@@ -30,8 +37,13 @@ with lib; let
 
   instanceModule = types.submodule {
     options = {
-      ip = mkOption {
-        type = types.str;
+      ipv4 = mkOption {
+        type = types.nullOr types.str;
+        description = "Network subnet that Wireguard uses.";
+      };
+
+      ipv6 = mkOption {
+        type = types.nullOr types.str;
         description = "Network subnet that Wireguard uses.";
       };
 
@@ -66,14 +78,6 @@ with lib; let
       };
     };
   };
-
-  mkPeer = getIp: peer: let
-    ip = getIp peer;
-  in
-    optional (ip != null) {
-      allowedIPs = ["${ip}/32"];
-      inherit (peer) publicKey;
-    };
 in {
   options = {
     multivpn.wireguard = {
@@ -86,73 +90,81 @@ in {
   };
 
   config = mkMerge (mapAttrsToList (name: instance: let
-    dev = "vpn-wg-${name}";
-  in {
-    multivpn.vpnInterfaces = [dev];
+      dev = "vpn-wg-${name}";
+    in {
+      multivpn.vpnInterfaces = [dev];
 
-    networking = {
-      firewall.allowedUDPPorts = mkIf (!instance.enableUDP2RAW) [instance.port];
-      firewall.allowedTCPPorts = mkIf instance.enableUDP2RAW [instance.port];
+      networking = {
+        firewall.allowedUDPPorts = mkIf (!instance.enableUDP2RAW) [instance.port];
+        firewall.allowedTCPPorts = mkIf instance.enableUDP2RAW [instance.port];
 
-      # FIXME: IPv6
-      wireguard.interfaces.${dev} = {
-        ips = ["${cfg.ip}/24"];
-        type =
-          if instance.amneziaWGOptions != {}
-          then "amneziawg"
-          else "wireguard";
-        mtu = mkIf instance.enableUDP2RAW udp2rawMTU;
-        privateKeyFile = cfg.privateKeyFile;
-        listenPort =
-          if instance.enableUDP2RAW
-          then instance.internalPort
-          else instance.port;
-        peers = concatMap (mkPeer (peer: peer.ip)) cfg.peers;
-        extraOptions = instance.amneziaWGOptions;
+        wireguard.interfaces.${dev} = {
+          ips =
+            optional (cfg.ipv4 != null) "${cfg.ipv4}/24"
+            ++ optional (cfg.ipv6 != null) "${cfg.ipv6}/24";
+          type =
+            if instance.amneziaWGOptions != {}
+            then "amneziawg"
+            else "wireguard";
+          mtu = mkIf instance.enableUDP2RAW udp2rawMTU;
+          privateKeyFile = cfg.privateKeyFile;
+          listenPort =
+            if instance.enableUDP2RAW
+            then instance.internalPort
+            else instance.port;
+          peers =
+            concatMap (peer: {
+              allowedIPs =
+                optional (peer.ipv4 != null) "${cfg.ipv4}/32"
+                ++ optional (peer.ipv6 != null) "${cfg.ipv6}/128";
+              inherit (peer) publicKey;
+            })
+            cfg.peers;
+          extraOptions = instance.amneziaWGOptions;
+        };
       };
-    };
 
-    multivpn.udp2raw.servers.${name} = mkIf instance.enableUDP2RAW {
-      address = "0.0.0.0";
-      port = instance.port;
-      destination = "127.0.0.1:${toString instance.internalPort}";
-    };
-
-    systemd.services."vpn-credentials-wireguard-${name}" = {
-      description = "Prepare the client credentials for Wireguard.";
-      wantedBy = ["multi-user.target"];
-      path = with pkgs; [wireguard-tools];
-      serviceConfig = {
-        Type = "oneshot";
-        StateDirectory = "vpn-credentials";
-        StateDirectoryMode = "0700";
-        WorkingDirectory = "/var/lib/vpn-credentials";
+      multivpn.udp2raw.servers.${name} = mkIf instance.enableUDP2RAW {
+        port = instance.port;
+        destination = "127.0.0.1:${toString instance.internalPort}";
       };
-      script = ''
-        dir=wireguard-${escapeShellArg name}
-        mkdir -p "$dir"
-        domain=${escapeShellArg rootCfg.domain}
-        port=${toString port}
-        public=$(wg pubkey < ${escapeShellArg cfg.privateKeyFile})
-        cat > "$dir/wg.conf" <<EOF
-        [Interface]
-        PrivateKey = <private key>
-        Address = <ip>/32
-        ${optionalString instance.enableUDP2RAW ''
-          MTU = ${toString udp2rawMTU}
-        ''}
-        ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
-            ${name} = ${toString value}
-          '')
-          instance.amneziaWGOptions)}
 
-        [Peer]
-        Endpoint = $domain:$port
-        PublicKey = $public
-        AllowedIPs = 0.0.0.0/0
-        PersistentKeepalive = 25
-        EOF
-      '';
-    };
-  }) cfg.instances);
+      systemd.services."vpn-credentials-wireguard-${name}" = {
+        description = "Prepare the client credentials for Wireguard.";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [wireguard-tools];
+        serviceConfig = {
+          Type = "oneshot";
+          StateDirectory = "vpn-credentials";
+          StateDirectoryMode = "0700";
+          WorkingDirectory = "/var/lib/vpn-credentials";
+        };
+        script = ''
+          dir=wireguard-${escapeShellArg name}
+          mkdir -p "$dir"
+          domain=${escapeShellArg rootCfg.domain}
+          port=${toString port}
+          public=$(wg pubkey < ${escapeShellArg cfg.privateKeyFile})
+          cat > "$dir/wg.conf" <<EOF
+          [Interface]
+          PrivateKey = <private key>
+          Address = <ip>/32
+          ${optionalString instance.enableUDP2RAW ''
+            MTU = ${toString udp2rawMTU}
+          ''}
+          ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
+              ${name} = ${toString value}
+            '')
+            instance.amneziaWGOptions)}
+
+          [Peer]
+          Endpoint = $domain:$port
+          PublicKey = $public
+          AllowedIPs = 0.0.0.0/0,::/0
+          PersistentKeepalive = 25
+          EOF
+        '';
+      };
+    })
+    cfg.instances);
 }
