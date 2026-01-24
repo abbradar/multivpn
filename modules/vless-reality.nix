@@ -8,10 +8,11 @@ with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.vless-reality;
 
-  port = 443;
   flow = "xtls-rprx-vision";
 
   sni = head cfg.serverNames;
+
+  useLocalUpstream = cfg.destinationDomain == null;
 
   xrayClientConfig = {
     remarks = rootCfg.domain;
@@ -31,7 +32,7 @@ with lib; let
         settings.vnext = [
           {
             address = rootCfg.domain;
-            inherit port;
+            port = 443;
             users = [
               {
                 id = cfg.id;
@@ -57,17 +58,17 @@ with lib; let
 
   xrayClientConfigFile = pkgs.writeText "xray-client.json" (builtins.toJSON xrayClientConfig);
 
-  linkPrefix = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=reality&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=${sni}";
+  linkPrefix = "vless://${cfg.id}@${rootCfg.domain}:443?security=reality&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=${sni}";
 in {
   options = {
     multivpn.vless-reality = {
       enable = mkEnableOption "VLESS XTLS REALITY support";
 
       destinationDomain = mkOption {
-        type = types.str;
-        example = "example.com";
+        type = types.nullOr types.str;
+        example = null;
         description = ''
-          An address to which we redirect the traffic when the handshake is failed.
+          An address to which we redirect the traffic when the handshake is failed. If `null`, forward to the local upstream.
         '';
       };
 
@@ -95,13 +96,15 @@ in {
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
-    networking.firewall.allowedTCPPorts = [80 port]; # HTTP
+    networking.firewall.allowedTCPPorts = [80 443]; # HTTP
+
+    multivpn.vless-reality.serverNames = mkIf useLocalUpstream [rootCfg.domain];
 
     multivpn.services.xray = {
       enable = true;
       inbounds = [
         {
-          port = port;
+          port = 443;
           protocol = "vless";
           settings = {
             clients = [
@@ -117,18 +120,41 @@ in {
             network = "tcp";
             security = "reality";
             realitySettings = {
-              dest = "${cfg.destinationDomain}:443";
+              dest =
+                if useLocalUpstream
+                then "127.0.0.1:8003"
+                else "${cfg.destinationDomain}:443";
               serverNames = cfg.serverNames;
               privateKey = cfg.privateKey;
               shortIds = [""];
+              xver =
+                if useLocalUpstream
+                then 2
+                else 0;
             };
           };
         }
       ];
     };
 
+    services.nginx = mkIf useLocalUpstream {
+      enable = true;
+      virtualHosts.${rootCfg.domain} = {
+        listen = [
+          {
+            addr = "127.0.0.1";
+            port = 8003;
+            tls = true;
+            proxyProtocol = true;
+          }
+        ];
+      };
+    };
+
+    multivpn.nginx.enableCustomHTTPS = mkIf useLocalUpstream true;
+
     systemd.services = {
-      vless-reality-forward-http = {
+      vless-reality-forward-http = mkIf (!useLocalUpstream) {
         description = "Forward HTTP traffic to the target domain.";
         wantedBy = ["multi-user.target"];
         serviceConfig.ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:80,fork,reuseaddr TCP:${cfg.destinationDomain}:80";

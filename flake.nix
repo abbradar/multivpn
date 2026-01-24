@@ -8,6 +8,7 @@
     flake-parts.lib.mkFlake {inherit inputs;} ({...}: {
       flake.nixosModules.default.imports = [
         ./modules/common.nix
+        ./modules/nginx.nix
         ./modules/iodine.nix
         ./modules/mtprotoproxy.nix
         ./modules/openvpn.nix

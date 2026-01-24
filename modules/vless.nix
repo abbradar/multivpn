@@ -8,7 +8,6 @@ with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.vless;
 
-  port = 443;
   flow = "xtls-rprx-vision";
 
   xrayClientConfig = {
@@ -29,7 +28,7 @@ with lib; let
         settings.vnext = [
           {
             address = rootCfg.domain;
-            inherit port;
+            port = 443;
             users = [
               {
                 id = cfg.id;
@@ -51,7 +50,7 @@ with lib; let
 
   xrayClientConfigFile = pkgs.writeText "xray-client.json" (builtins.toJSON xrayClientConfig);
 
-  link = "vless://${cfg.id}@${rootCfg.domain}:${toString port}?security=tls&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
+  link = "vless://${cfg.id}@${rootCfg.domain}:443?security=tls&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
 in {
   options = {
     multivpn.vless = {
@@ -65,13 +64,13 @@ in {
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
-    networking.firewall.allowedTCPPorts = [80 port]; # HTTP
+    networking.firewall.allowedTCPPorts = [80 443]; # HTTP
 
     multivpn.services.xray = {
       enable = true;
       inbounds = [
         {
-          port = port;
+          port = 443;
           protocol = "vless";
           settings = {
             clients = [
@@ -84,12 +83,12 @@ in {
             fallbacks = [
               {
                 dest = "8001";
-                xver = 1;
+                xver = 2;
               }
               {
                 alpn = "h2";
                 dest = "8002";
-                xver = 1;
+                xver = 2;
               }
             ];
           };
@@ -130,30 +129,13 @@ in {
           }
         ];
       };
-      appendHttpConfig = ''
-        server {
-          listen 80;
-
-          server_name ${rootCfg.domain};
-
-          location / {
-            return 301 https://$host$request_uri;
-          }
-
-          location ^~ /.well-known/acme-challenge/ {
-            root /var/lib/acme/acme-challenge;
-          }
-        }
-      '';
     };
 
-    security.acme.certs.${rootCfg.domain} = {
-      webroot = "/var/lib/acme/acme-challenge";
+    security.acme.certs.${rootCfg.domain}.postRun = ''
+      ${config.systemd.package}/bin/systemctl restart xray
+    '';
 
-      postRun = ''
-        ${config.systemd.package}/bin/systemctl restart xray
-      '';
-    };
+    multivpn.nginx.enableCustomHTTPS = true;
 
     systemd.services = {
       xray = {
