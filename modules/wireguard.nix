@@ -39,12 +39,14 @@ with lib; let
     options = {
       ipv4 = mkOption {
         type = types.nullOr types.str;
-        description = "Network subnet that Wireguard uses.";
+        example = "10.0.174.1";
+        description = "Network address and a /24 subnet that Wireguard uses.";
       };
 
       ipv6 = mkOption {
         type = types.nullOr types.str;
-        description = "Network subnet that Wireguard uses.";
+        example = "fd80:f700:3bb2::1";
+        description = "Network address and a /64 subnet that Wireguard uses.";
       };
 
       port = mkOption {
@@ -92,7 +94,32 @@ in {
   config = mkMerge (mapAttrsToList (name: instance: let
       dev = "vpn-wg-${name}";
     in {
+      assertions =
+        [
+          {
+            assertion = instance.ipv4 != null || instance.ipv6 != null;
+            message = "At least one IP address must be set for Wireguard instance ${name}.";
+          }
+        ]
+        ++ concatMap (peer: [
+          {
+            assertion = peer.ipv4 != null -> instance.ipv4 != null;
+            message = "The WireGuard instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
+          }
+          {
+            assertion = peer.ipv6 != null -> instance.ipv6 != null;
+            message = "The WireGuard instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
+          }
+          {
+            assertion = peer.ipv4 != null || peer.ipv6 != null;
+            message = "At least one IP address must be set for Wireguard peer ${name} of instance ${name}.";
+          }
+        ])
+        instance.peers;
+
       multivpn.vpnInterfaces = [dev];
+
+      networking.nat.enableIPv6 = mkIf (instance.ipv6 != null) true;
 
       networking = {
         firewall.allowedUDPPorts = mkIf (!instance.enableUDP2RAW) [instance.port];
@@ -143,12 +170,11 @@ in {
           dir=wireguard-${escapeShellArg name}
           mkdir -p "$dir"
           domain=${escapeShellArg rootCfg.domain}
-          port=${toString port}
           public=$(wg pubkey < ${escapeShellArg cfg.privateKeyFile})
           cat > "$dir/wg.conf" <<EOF
           [Interface]
           PrivateKey = <private key>
-          Address = <ip>/32
+          Address = ${concatStringsSep "," (optional (instance.ipv4 != null) "<ipv4>/32" ++ optional (instance.ipv6 != null) "<ipv6>/128")}
           ${optionalString instance.enableUDP2RAW ''
             MTU = ${toString udp2rawMTU}
           ''}
@@ -158,9 +184,9 @@ in {
             instance.amneziaWGOptions)}
 
           [Peer]
-          Endpoint = $domain:$port
+          Endpoint = $domain:${toString instance.port}
           PublicKey = $public
-          AllowedIPs = 0.0.0.0/0,::/0
+          AllowedIPs = ${concatStringsSep "," (optional (instance.ipv4 != null) "0.0.0.0/0" ++ optional (instance.ipv6 != null) "::/0")}
           PersistentKeepalive = 25
           EOF
         '';

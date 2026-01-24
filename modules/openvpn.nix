@@ -37,18 +37,33 @@ in {
     multivpn.openvpn = {
       enable = mkEnableOption "OpenVPN support";
 
-      subnet = mkOption {
-        type = types.str;
-        default = "10.0.175.0";
-        description = "Network subnet that OpenVPN uses.";
+      subnet4 = mkOption {
+        type = types.nullOr types.str;
+        example = "10.0.175.0";
+        description = "An /24 IPv4 network subnet that OpenVPN uses.";
+      };
+
+      subnet6 = mkOption {
+        type = types.nullOr types.str;
+        example = "fd80:f700:3bb2::";
+        description = "An /64 IPv6 network subnet that OpenVPN uses.";
       };
     };
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
+    assertions = [
+      {
+        assertion = cfg.subnet4 != null || cfg.subnet6 != null;
+        message = "At least one subnet must be set for OpenVPN.";
+      }
+    ];
+
     multivpn.vpnInterfaces = [dev];
 
     networking.firewall.allowedUDPPorts = [port];
+
+    networking.nat.enableIPv6 = mkIf (cfg.subnet6 != null) true;
 
     # TODO: IPv6
     services.openvpn.servers.server.config = ''
@@ -57,7 +72,8 @@ in {
       dev ${dev}
       dev-type tun
       topology subnet
-      server ${cfg.subnet} 255.255.255.0
+      ${optionalString (cfg.subnet4 != null) "server ${cfg.subnet4} 255.255.255.0"}
+      ${optionalString (cfg.subnet6 != null) "server-ipv6 ${cfg.subnet6}/64"}
 
       persist-tun
       persist-key

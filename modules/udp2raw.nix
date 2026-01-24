@@ -31,7 +31,13 @@ in {
       servers = mkOption {
         type = types.attrsOf (types.submodule [
           instanceModule
-          {options.address.default = "[::]";}
+          {
+            config.address = mkDefault (
+              if config.networking.enableIPv6
+              then "[::]"
+              else "0.0.0.0"
+            );
+          }
         ]);
         default = {};
         description = "UDP2RAW servers.";
@@ -40,7 +46,13 @@ in {
       clients = mkOption {
         type = types.attrsOf (types.submodule [
           instanceModule
-          {options.address.default = "[::1]";}
+          {
+            config.address = mkDefault (
+              if config.networking.enableIPv6
+              then "[::1]"
+              else "127.0.0.1"
+            );
+          }
         ]);
         default = {};
         description = "UDP2RAW clients.";
