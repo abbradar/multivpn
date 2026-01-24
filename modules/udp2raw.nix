@@ -45,7 +45,7 @@ in {
   config = {
     systemd.services = mkMerge [
       (mapAttrs' (name: iface:
-        nameValuePair "multivpn-udp2raw-server-${name}" {
+        nameValuePair "udp2raw-server-${name}" {
           description = "UDP2RAW server for ${name}.";
           wantedBy = ["multi-user.target"];
           wants = ["network.target"];
@@ -74,7 +74,7 @@ in {
       cfg.servers)
 
       (mapAttrs' (name: iface:
-        nameValuePair "multivpn-udp2raw-client-${name}" {
+        nameValuePair "udp2raw-client-${name}" {
           description = "UDP2RAW client for ${name}.";
           wantedBy = ["multi-user.target"];
           wants = ["network.target"];
