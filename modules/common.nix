@@ -27,9 +27,8 @@ in {
 
   config = mkIf cfg.enable {
     networking = {
-      # To ease the configuration.
-      useNetworkd = true;
       nftables = {
+        # To ease the configuration.
         enable = true;
         tables = {
           "multivpn-filter4" = {
