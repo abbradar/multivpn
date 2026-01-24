@@ -35,7 +35,7 @@ with lib; let
     };
   };
 
-  instanceModule = types.submodule {
+  instanceModule = {name, ...}: {
     options = {
       ipv4 = mkOption {
         type = types.nullOr types.str;
@@ -78,54 +78,75 @@ with lib; let
         default = {};
         description = "WireGuard peers.";
       };
+
+      device = mkOption {
+        type = types.str;
+        internal = true;
+        description = "WireGuard device.";
+      };
+    };
+
+    config = {
+      device = "vpn-wg-${name}";
     };
   };
 in {
   options = {
     multivpn.wireguard = {
       instances = mkOption {
-        type = types.attrsOf instanceModule;
+        type = types.attrsOf (types.submodule instanceModule);
         default = {};
         description = "WireGuard/AmneziaWG instances.";
       };
     };
   };
 
-  config = mkMerge (mapAttrsToList (name: instance: let
-      dev = "vpn-wg-${name}";
-    in {
-      assertions =
-        [
-          {
-            assertion = instance.ipv4 != null || instance.ipv6 != null;
-            message = "At least one IP address must be set for Wireguard instance ${name}.";
-          }
-        ]
-        ++ concatMap (peer: [
-          {
-            assertion = peer.ipv4 != null -> instance.ipv4 != null;
-            message = "The WireGuard instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
-          }
-          {
-            assertion = peer.ipv6 != null -> instance.ipv6 != null;
-            message = "The WireGuard instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
-          }
-          {
-            assertion = peer.ipv4 != null || peer.ipv6 != null;
-            message = "At least one IP address must be set for Wireguard peer ${name} of instance ${name}.";
-          }
-        ])
-        instance.peers;
+  config = {
+    assertions = concatLists (mapAttrsToList (name: instance:
+      [
+        {
+          assertion = instance.ipv4 != null || instance.ipv6 != null;
+          message = "At least one IP address must be set for Wireguard instance ${name}.";
+        }
+      ]
+      ++ concatMap (peer: [
+        {
+          assertion = peer.ipv4 != null -> instance.ipv4 != null;
+          message = "The WireGuard instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
+        }
+        {
+          assertion = peer.ipv6 != null -> instance.ipv6 != null;
+          message = "The WireGuard instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
+        }
+        {
+          assertion = peer.ipv4 != null || peer.ipv6 != null;
+          message = "At least one IP address must be set for Wireguard peer ${name} of instance ${name}.";
+        }
+      ])
+      instance.peers)
+    cfg.instances);
 
-      multivpn.vpnInterfaces = [dev];
+    multivpn.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
 
-      networking.nat.enableIPv6 = mkIf (instance.ipv6 != null) true;
+    multivpn.udp2raw.servers = concatMapAttrs (name: instance:
+      optionalAttrs instance.enableUDP2RAW {
+        ${instance.device} = {
+          port = instance.port;
+          destination = "127.0.0.1:${toString instance.internalPort}";
+        };
+      })
+    cfg.instances;
 
-      networking = {
-        firewall.allowedUDPPorts = mkIf (!instance.enableUDP2RAW) [instance.port];
-        firewall.allowedTCPPorts = mkIf instance.enableUDP2RAW [instance.port];
+    networking = {
+      nat.enableIPv6 = mkMerge (mapAttrsToList (name: instance: mkIf (instance.ipv6 != null) true) cfg.instances);
 
-        wireguard.interfaces.${dev} = {
+      firewall = {
+        allowedUDPPorts = mkMerge (mapAttrsToList (mkIf (!instance.enableUDP2RAW) [instance.port]) cfg.instances);
+        allowedTCPPorts = mkMerge (mapAttrsToList (mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
+      };
+
+      wireguard.interfaces = mapAttrs' (name: instance:
+        nameValuePair instance.device {
           ips =
             optional (cfg.ipv4 != null) "${cfg.ipv4}/24"
             ++ optional (cfg.ipv6 != null) "${cfg.ipv6}/24";
@@ -148,15 +169,12 @@ in {
             })
             cfg.peers;
           extraOptions = instance.amneziaWGOptions;
-        };
-      };
+        })
+      cfg.instances;
+    };
 
-      multivpn.udp2raw.servers.${name} = mkIf instance.enableUDP2RAW {
-        port = instance.port;
-        destination = "127.0.0.1:${toString instance.internalPort}";
-      };
-
-      systemd.services."vpn-credentials-wireguard-${name}" = {
+    systemd.services = mapAttrs' (name: instance:
+      nameValuePair "vpn-credentials-wireguard-${name}" {
         description = "Prepare the client credentials for Wireguard.";
         wantedBy = ["multi-user.target"];
         path = with pkgs; [wireguard-tools];
@@ -190,7 +208,7 @@ in {
           PersistentKeepalive = 25
           EOF
         '';
-      };
-    })
-    cfg.instances);
+      })
+    cfg.instances;
+  };
 }

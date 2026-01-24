@@ -7,7 +7,7 @@
 with lib; let
   cfg = config.multivpn.udp2raw;
 
-  instanceModule = {
+  instanceModule = {...}: {
     options = {
       address = mkOption {
         type = types.str;
