@@ -8,9 +8,6 @@
     # A example.com 1.2.3.4
     # NS t.example.com 1.2.3.4
     domain = "example.com";
-    # Set to your local IP address of the external interface.
-    # Find it out with: `ip -4 addr show`
-    externalLocalAddress4 = "192.168.1.1";
 
     ss-legacy = {
       enable = true;

@@ -44,7 +44,6 @@ in {
               }
             ];
             udp = true;
-            ip = rootCfg.externalLocalAddress4;
           };
         }
       ];

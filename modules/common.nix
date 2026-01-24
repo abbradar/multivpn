@@ -11,11 +11,6 @@ in {
     multivpn = {
       enable = mkEnableOption "MultiVPN module";
 
-      externalLocalAddress4 = mkOption {
-        type = types.str;
-        description = "Local IPv4 network address of the external network interface.";
-      };
-
       domain = mkOption {
         type = types.str;
         description = "Host domain name.";
@@ -32,45 +27,39 @@ in {
 
   config = mkIf cfg.enable {
     networking = {
-      firewall = {
-        extraCommands = mkMerge [
-          (mkBefore ''
-            ip46tables -F multivpn-forward 2> /dev/null || true
-            ip46tables -X multivpn-forward 2> /dev/null || true
-            ip46tables -N multivpn-forward
+      # To ease the configuration.
+      useNetworkd = true;
+      nftables = {
+        enable = true;
+        tables = {
+          "multivpn-filter4" = {
+            family = "ip";
+            content = ''
+              chain forward {
+                type filter hook forward priority 0;
 
-            # Allow established.
-            ip46tables -A multivpn-forward -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-          '')
+                ct state {established, related} accept
+                ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
 
-          (mkAfter ''
-            ip46tables -A FORWARD -j multivpn-forward
-          '')
+                accept
+              }
+            '';
+          };
 
-          ''
-            ip46tables -F multivpn-block-private 2> /dev/null || true
-            ip46tables -X multivpn-block-private 2> /dev/null || true
-            ip46tables -N multivpn-block-private
+          "multivpn-filter6" = {
+            family = "ip6";
+            content = ''
+              chain forward {
+                type filter hook forward priority 0;
 
-            ${concatMapStringsSep "\n" (ip4: ''
-                iptables -A multivpn-forward -d ${escapeShellArg ip4} -j DROP
-              '')
-              addresses.privateNetworks4}
-            ${concatMapStringsSep "\n" (ip6: ''
-                ip6tables -A multivpn-forward -d ${escapeShellArg ip6} -j DROP
-              '')
-              addresses.privateNetworks6}
-            ip46tables -A multivpn-block-private -j RETURN
+                ct state {established, related} accept
+                ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
 
-            ${concatMapStringsSep "\n" (dev: ''
-                ip46tables -A multivpn-forward -i ${escapeShellArg dev} -j multivpn-block-private
-              '')
-              cfg.vpnInterfaces}
-          ''
-        ];
-        extraStopCommands = mkAfter ''
-          ip46tables -D FORWARD -j multivpn-forward 2>/dev/null || true
-        '';
+                accept
+              }
+            '';
+          };
+        };
       };
 
       nat = {
