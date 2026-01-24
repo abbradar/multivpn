@@ -145,32 +145,37 @@ in {
         allowedTCPPorts = mkMerge (mapAttrsToList (mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
       };
 
-      wireguard.interfaces = mapAttrs' (name: instance:
-        nameValuePair instance.device {
-          ips =
-            optional (cfg.ipv4 != null) "${cfg.ipv4}/24"
-            ++ optional (cfg.ipv6 != null) "${cfg.ipv6}/24";
-          type =
-            if instance.amneziaWGOptions != {}
-            then "amneziawg"
-            else "wireguard";
-          mtu = mkIf instance.enableUDP2RAW udp2rawMTU;
-          privateKeyFile = cfg.privateKeyFile;
-          listenPort =
-            if instance.enableUDP2RAW
-            then instance.internalPort
-            else instance.port;
-          peers =
-            concatMap (peer: {
-              allowedIPs =
-                optional (peer.ipv4 != null) "${cfg.ipv4}/32"
-                ++ optional (peer.ipv6 != null) "${cfg.ipv6}/128";
-              inherit (peer) publicKey;
-            })
-            cfg.peers;
-          extraOptions = instance.amneziaWGOptions;
-        })
-      cfg.instances;
+      wireguard = {
+        # networkd doesn't support AmneziaWG options.
+        useNetworkd = mkMerge (mapAttrsToList (name: instance: mkIf (instance.amneziaWGOptions != {}) false) cfg.instances);
+
+        interfaces = mapAttrs' (name: instance:
+          nameValuePair instance.device {
+            ips =
+              optional (cfg.ipv4 != null) "${cfg.ipv4}/24"
+              ++ optional (cfg.ipv6 != null) "${cfg.ipv6}/24";
+            type =
+              if instance.amneziaWGOptions != {}
+              then "amneziawg"
+              else "wireguard";
+            mtu = mkIf instance.enableUDP2RAW udp2rawMTU;
+            privateKeyFile = cfg.privateKeyFile;
+            listenPort =
+              if instance.enableUDP2RAW
+              then instance.internalPort
+              else instance.port;
+            peers =
+              concatMap (peer: {
+                allowedIPs =
+                  optional (peer.ipv4 != null) "${cfg.ipv4}/32"
+                  ++ optional (peer.ipv6 != null) "${cfg.ipv6}/128";
+                inherit (peer) publicKey;
+              })
+              cfg.peers;
+            extraOptions = instance.amneziaWGOptions;
+          })
+        cfg.instances;
+      };
     };
 
     systemd.services = mapAttrs' (name: instance:
