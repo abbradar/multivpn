@@ -98,43 +98,45 @@ in {
   config = mkIf (rootCfg.enable && cfg.enable) {
     networking.firewall.allowedTCPPorts = [80 443]; # HTTP
 
-    multivpn.vless-reality.serverNames = mkIf useLocalUpstream [rootCfg.domain];
+    multivpn = {
+      vless-reality.serverNames = mkIf useLocalUpstream [rootCfg.domain];
 
-    multivpn.services.xray = {
-      enable = true;
-      inbounds = [
-        {
-          port = 443;
-          protocol = "vless";
-          settings = {
-            clients = [
-              {
-                id = cfg.id;
-                flow = "xtls-rprx-vision";
-              }
-            ];
-            decryption = "none";
-          };
-
-          streamSettings = {
-            network = "tcp";
-            security = "reality";
-            realitySettings = {
-              dest =
-                if useLocalUpstream
-                then "127.0.0.1:8003"
-                else "${cfg.destinationDomain}:443";
-              serverNames = cfg.serverNames;
-              privateKey = cfg.privateKey;
-              shortIds = [""];
-              xver =
-                if useLocalUpstream
-                then 2
-                else 0;
+      services.xray = {
+        enable = true;
+        inbounds = [
+          {
+            port = 443;
+            protocol = "vless";
+            settings = {
+              clients = [
+                {
+                  id = cfg.id;
+                  flow = "xtls-rprx-vision";
+                }
+              ];
+              decryption = "none";
             };
-          };
-        }
-      ];
+
+            streamSettings = {
+              network = "tcp";
+              security = "reality";
+              realitySettings = {
+                dest =
+                  if useLocalUpstream
+                  then "127.0.0.1:8003"
+                  else "${cfg.destinationDomain}:443";
+                serverNames = cfg.serverNames;
+                privateKey = cfg.privateKey;
+                shortIds = [""];
+                xver =
+                  if useLocalUpstream
+                  then 2
+                  else 0;
+              };
+            };
+          }
+        ];
+      };
     };
 
     services.nginx = mkIf useLocalUpstream {

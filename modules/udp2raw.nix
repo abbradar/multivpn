@@ -5,7 +5,7 @@
   ...
 }:
 with lib; let
-  cfg = config.multivpn.udp2raw;
+  cfg = config.multivpn.services.udp2raw;
 
   instanceModule = {...}: {
     options = {
@@ -60,7 +60,7 @@ with lib; let
   };
 in {
   options = {
-    multivpn.udp2raw = {
+    multivpn.services.udp2raw = {
       servers = mkOption {
         type = types.attrsOf (types.submodule [
           instanceModule

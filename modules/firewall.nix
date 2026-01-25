@@ -26,6 +26,13 @@ in {
         example = literalExpression ''lib.fromHexString "0x100000"'';
         description = "Mark for VPN connections. Only set a single bit.";
       };
+
+      extraOutputRules = mkOption {
+        type = types.lines;
+        default = "";
+        internal = true;
+        description = "Extra output rules.";
+      };
     };
   };
 
@@ -42,68 +49,70 @@ in {
           content = let
             setVpnMark = "ct mark set (ct mark | ${toString cfg.fwmark}) meta mark set (meta mark | ${toString cfg.fwmark}) accept";
           in ''
-            chain postrouting {
-              type nat hook postrouting priority srcnat; policy accept;
-              meta mark & ${toString cfg.fwmark} == 0 accept
-              masquerade
-            }
+                 chain postrouting {
+                   type nat hook postrouting priority srcnat; policy accept;
+                   meta mark & ${toString cfg.fwmark} == 0 accept
+                   masquerade
+                 }
 
-            chain filter {
-              ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
-              ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
-            }
+                 chain filter {
+                   ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
+                   ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
+                 }
 
-            chain forward {
-              type filter hook forward priority filter; policy accept;
+                 chain forward {
+                   type filter hook forward priority filter; policy accept;
 
-              meta mark & ${toString cfg.fwmark} == 0 accept
-              ct state { established, related } accept
+                   meta mark & ${toString cfg.fwmark} == 0 accept
+                   ct state { established, related } accept
 
-              jump filter
+                   jump filter
 
-              # Clamp MSS to MTU.
-              tcp flags syn tcp option maxseg size set rt mtu
-            }
+                   # Clamp MSS to MTU.
+                   tcp flags syn tcp option maxseg size set rt mtu
+                 }
 
-            # `meta mark set (meta mark or (ct mark and ${toString cfg.fwmark}))` doesn't work, so we use a separate check.
-            chain restore-mark {
-              ct mark & ${toString cfg.fwmark} != 0 meta mark set (meta mark | ${toString cfg.fwmark})
-              accept
-            }
+                 # `meta mark set (meta mark or (ct mark and ${toString cfg.fwmark}))` doesn't work, so we use a separate check.
+                 chain restore-mark {
+                   ct mark & ${toString cfg.fwmark} != 0 meta mark set (meta mark | ${toString cfg.fwmark})
+                   accept
+                 }
 
-            chain mark-forward {
-              type filter hook prerouting priority mangle; policy accept;
+                 chain mark-forward {
+                   type filter hook prerouting priority mangle; policy accept;
 
-              ct state { established, related } goto restore-mark
-              ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
-            }
+                   ct state { established, related } goto restore-mark
+                   ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
+                 }
 
-            chain output {
-              type filter hook output priority filter; policy accept;
+                 chain output {
+                   type filter hook output priority filter; policy accept;
 
-              meta mark and ${toString cfg.fwmark} == 0 accept
-              ct state { established, related } accept
+                   meta mark and ${toString cfg.fwmark} == 0 accept
+                   ct state { established, related } accept
 
-              # Allow local DNS resolution.
-              ip daddr 127.0.0.0/8 udp dport 53 accept
-              ip daddr 127.0.0.0/8 tcp dport 53 accept
-              ip6 daddr ::1/128 udp dport 53 accept
-              ip6 daddr ::1/128 tcp dport 53 accept
+                   # Allow local DNS resolution.
+                   ip daddr 127.0.0.0/8 udp dport 53 accept
+                   ip daddr 127.0.0.0/8 tcp dport 53 accept
+                   ip6 daddr ::1/128 udp dport 53 accept
+                   ip6 daddr ::1/128 tcp dport 53 accept
 
-              jump filter
-            }
+            ${cfg.extraOutputRules}
 
-            # Populated by systemd. The name is required to not contain dashes.
-            set vpnservices {
-              type cgroupsv2
-            }
+                   jump filter
+                 }
 
-            chain mark-output {
-              type route hook output priority mangle; policy accept;
+                 # Populated by systemd. The name is required to not contain dashes.
+                 set vpnservices {
+                   type cgroupsv2
+                 }
 
-              ct state { established, related } goto restore-mark
-              socket cgroupv2 level 2 @vpnservices ${setVpnMark} # MULTIVPN_NOCHECK
-            };
+                 chain mark-output {
+                   type route hook output priority mangle; policy accept;
+
+                   ct state { established, related } goto restore-mark
+                   socket cgroupv2 level 2 @vpnservices ${setVpnMark} # MULTIVPN_NOCHECK
+                 };
           '';
         };
         preCheckRuleset = ''

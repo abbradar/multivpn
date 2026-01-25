@@ -125,17 +125,19 @@ in {
       instance.peers)
     cfg.instances);
 
-    multivpn.firewall.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
+    multivpn = {
+      firewall.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
 
-    multivpn.udp2raw.servers = concatMapAttrs (name: instance:
-      optionalAttrs instance.enableUDP2RAW {
-        ${instance.device} = {
-          port = instance.port;
-          destination = "127.0.0.1";
-          destinationPort = instance.internalPort;
-        };
-      })
-    cfg.instances;
+      services.udp2raw.servers = concatMapAttrs (name: instance:
+        optionalAttrs instance.enableUDP2RAW {
+          ${instance.device} = {
+            port = instance.port;
+            destination = "127.0.0.1";
+            destinationPort = instance.internalPort;
+          };
+        })
+      cfg.instances;
+    };
 
     networking = {
       nat.enableIPv6 = mkMerge (mapAttrsToList (name: instance: mkIf (instance.ipv6 != null) true) cfg.instances);
