@@ -6,11 +6,11 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.ss-legacy;
+  cfg = rootCfg.protocols.ss-legacy;
   encryption = "aes-256-gcm";
 in {
   options = {
-    multivpn.ss-legacy = {
+    multivpn.protocols.ss-legacy = {
       enable = mkEnableOption "Legacy Shadowsocks support";
 
       password = mkOption {

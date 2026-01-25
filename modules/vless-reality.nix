@@ -6,7 +6,7 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.vless-reality;
+  cfg = rootCfg.protocols.vless-reality;
 
   flow = "xtls-rprx-vision";
 
@@ -61,7 +61,7 @@ with lib; let
   linkPrefix = "vless://${cfg.id}@${rootCfg.domain}:443?security=reality&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision&sni=${sni}";
 in {
   options = {
-    multivpn.vless-reality = {
+    multivpn.protocols.vless-reality = {
       enable = mkEnableOption "VLESS XTLS REALITY support";
 
       destinationDomain = mkOption {
@@ -137,6 +137,10 @@ in {
           }
         ];
       };
+
+      firewall.extraVPNOutputRules = ''
+        ip daddr 127.0.0.1 tcp dport { 8003 } accept
+      '';
     };
 
     services.nginx = mkIf useLocalUpstream {

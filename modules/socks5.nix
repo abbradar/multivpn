@@ -6,11 +6,11 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.socks5;
+  cfg = rootCfg.protocols.socks5;
   user = "anonymous";
 in {
   options = {
-    multivpn.socks5 = {
+    multivpn.protocols.socks5 = {
       enable = mkEnableOption "SOCKS5 support";
 
       password = mkOption {

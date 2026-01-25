@@ -6,7 +6,7 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.vless;
+  cfg = rootCfg.protocols.vless;
 
   flow = "xtls-rprx-vision";
 
@@ -53,7 +53,7 @@ with lib; let
   link = "vless://${cfg.id}@${rootCfg.domain}:443?security=tls&encryption=none&fp=chrome&type=tcp&flow=xtls-rprx-vision#${rootCfg.domain}";
 in {
   options = {
-    multivpn.vless = {
+    multivpn.protocols.vless = {
       enable = mkEnableOption "VLESS XTLS support";
 
       id = mkOption {
@@ -66,50 +66,56 @@ in {
   config = mkIf (rootCfg.enable && cfg.enable) {
     networking.firewall.allowedTCPPorts = [80 443]; # HTTP
 
-    multivpn.services.xray = {
-      enable = true;
-      inbounds = [
-        {
-          port = 443;
-          protocol = "vless";
-          settings = {
-            clients = [
-              {
-                id = cfg.id;
-                flow = "xtls-rprx-vision";
-              }
-            ];
-            decryption = "none";
-            fallbacks = [
-              {
-                dest = "8001";
-                xver = 2;
-              }
-              {
-                alpn = "h2";
-                dest = "8002";
-                xver = 2;
-              }
-            ];
-          };
-
-          streamSettings = {
-            network = "tcp";
-            security = "tls";
-            tlsSettings = {
-              rejectUnknownSni = true;
-              minVersion = "1.2";
-              certificates = [
+    multivpn = {
+      services.xray = {
+        enable = true;
+        inbounds = [
+          {
+            port = 443;
+            protocol = "vless";
+            settings = {
+              clients = [
                 {
-                  ocspStapling = 3600;
-                  certificateFile = "/tmp/fullchain.pem"; # Paths from the NixOS module
-                  keyFile = "/tmp/key.pem";
+                  id = cfg.id;
+                  flow = "xtls-rprx-vision";
+                }
+              ];
+              decryption = "none";
+              fallbacks = [
+                {
+                  dest = "8001";
+                  xver = 2;
+                }
+                {
+                  alpn = "h2";
+                  dest = "8002";
+                  xver = 2;
                 }
               ];
             };
-          };
-        }
-      ];
+
+            streamSettings = {
+              network = "tcp";
+              security = "tls";
+              tlsSettings = {
+                rejectUnknownSni = true;
+                minVersion = "1.2";
+                certificates = [
+                  {
+                    ocspStapling = 3600;
+                    certificateFile = "/tmp/fullchain.pem"; # Paths from the NixOS module
+                    keyFile = "/tmp/key.pem";
+                  }
+                ];
+              };
+            };
+          }
+        ];
+      };
+
+      firewall.extraVPNOutputRules = ''
+        ip daddr 127.0.0.1 tcp dport { 8001, 8002 } accept
+      '';
     };
 
     services.nginx = {

@@ -6,13 +6,13 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.iodine;
+  cfg = rootCfg.protocols.iodine;
 
   dev = "vpn-dns";
   domain = "${cfg.subdomain}.${rootCfg.domain}";
 in {
   options = {
-    multivpn.iodine = {
+    multivpn.protocols.iodine = {
       enable = mkEnableOption "Iodine support";
 
       subdomain = mkOption {

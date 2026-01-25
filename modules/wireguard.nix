@@ -6,7 +6,7 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.wireguard;
+  cfg = rootCfg.protocols.wireguard;
   # UDP2RAW adds 60 bytes of overhead.
   udp2rawMTU = 1360;
 
@@ -91,7 +91,7 @@ with lib; let
   };
 in {
   options = {
-    multivpn.wireguard = {
+    multivpn.protocols.wireguard = {
       instances = mkOption {
         type = types.attrsOf (types.submodule instanceModule);
         default = {};

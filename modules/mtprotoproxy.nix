@@ -5,11 +5,11 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.mtprotoproxy;
+  cfg = rootCfg.protocols.mtprotoproxy;
   port = 8443;
 in {
   options = {
-    multivpn.mtprotoproxy = {
+    multivpn.protocols.mtprotoproxy = {
       enable = mkEnableOption "MTPROTO proxy support";
 
       tlsDomain = mkOption {

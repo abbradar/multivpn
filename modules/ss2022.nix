@@ -6,11 +6,11 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.ss2022;
+  cfg = rootCfg.protocols.ss2022;
   encryption = "2022-blake3-aes-256-gcm";
 in {
   options = {
-    multivpn.ss2022 = {
+    multivpn.protocols.ss2022 = {
       enable = mkEnableOption "Shadowsocks 2022 support";
 
       key = mkOption {

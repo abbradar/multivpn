@@ -6,7 +6,7 @@
 }:
 with lib; let
   rootCfg = config.multivpn;
-  cfg = rootCfg.openvpn;
+  cfg = rootCfg.protocols.openvpn;
   dev = "vpn-ovpn";
   port = 1194;
 
@@ -34,7 +34,7 @@ with lib; let
   '';
 in {
   options = {
-    multivpn.openvpn = {
+    multivpn.protocols.openvpn = {
       enable = mkEnableOption "OpenVPN support";
 
       subnet4 = mkOption {
