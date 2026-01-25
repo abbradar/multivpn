@@ -9,7 +9,6 @@
       flake.nixosModules.default.imports = [
         ./modules/common.nix
         ./modules/firewall.nix
-        ./modules/nginx.nix
         ./modules/udp2raw.nix
         ./modules/iodine.nix
         ./modules/mtprotoproxy.nix

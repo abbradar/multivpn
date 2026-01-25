@@ -129,11 +129,28 @@ in {
           }
         ];
       };
+      # Workaround for the weird proxy SSL configuration.
+      appendHttpConfig = ''
+        server {
+          listen 80;
+
+          server_name ${rootCfg.domain};
+
+          location / {
+            return 301 https://$host$request_uri;
+          }
+
+          location ^~ /.well-known/acme-challenge/ {
+            root /var/lib/acme/acme-challenge;
+          }
+        }
+      '';
     };
 
-    security.acme.certs.${rootCfg.domain}.reloadServices = ["xray.service"];
-
-    multivpn.nginx.enableCustomHTTPS = true;
+    security.acme.certs.${rootCfg.domain} = {
+      reloadServices = ["xray.service"];
+      webroot = "/var/lib/acme/acme-challenge";
+    };
 
     systemd.services = {
       xray = {
