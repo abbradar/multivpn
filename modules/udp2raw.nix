@@ -80,11 +80,7 @@ in {
         type = types.attrsOf (types.submodule [
           instanceModule
           {
-            config.address = mkDefault (
-              if config.networking.enableIPv6
-              then "[::1]"
-              else "127.0.0.1"
-            );
+            options.address = mkOption {default = "127.0.0.1";};
           }
         ]);
         default = {};

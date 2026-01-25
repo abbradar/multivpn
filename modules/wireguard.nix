@@ -132,7 +132,7 @@ in {
         ${instance.device} = {
           port = instance.port;
           destination = "127.0.0.1";
-	  destinationPort = instance.internalPort;
+          destinationPort = instance.internalPort;
         };
       })
     cfg.instances;
