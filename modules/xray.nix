@@ -60,6 +60,8 @@ in {
     };
 
     systemd.services.xray = {
+      bindsTo = ["nftables.service"];
+      after = ["nftables.service"];
       serviceConfig = {
         PrivateTmp = true;
         NFTSet = "cgroup:inet:multivpn:vpnservices";
