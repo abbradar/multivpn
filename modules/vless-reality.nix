@@ -99,7 +99,7 @@ in {
     networking.firewall.allowedTCPPorts = [80 443]; # HTTP
 
     multivpn = {
-      vless-reality.serverNames = mkIf useLocalUpstream [rootCfg.domain];
+      protocols.vless-reality.serverNames = mkIf useLocalUpstream [rootCfg.domain];
 
       services.xray = {
         enable = true;
