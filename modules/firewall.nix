@@ -2,7 +2,8 @@
   config,
   lib,
   ...
-}: let
+}:
+with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.firewall;
 
