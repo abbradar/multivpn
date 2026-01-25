@@ -165,13 +165,13 @@ in {
               then instance.internalPort
               else instance.port;
             peers =
-              concatMap (peer: {
+              map (peer: {
                 allowedIPs =
                   optional (peer.ipv4 != null) "${cfg.ipv4}/32"
                   ++ optional (peer.ipv6 != null) "${cfg.ipv6}/128";
                 inherit (peer) publicKey;
               })
-              cfg.peers;
+              instance.peers;
             extraOptions = instance.amneziaWGOptions;
           })
         cfg.instances;
