@@ -90,6 +90,11 @@ in {
         default = {};
         description = "UDP2RAW clients.";
       };
+
+      interfaces = mkOption {
+        type = types.listOf types.str;
+        description = "Interfaces to disable GRO and LRO for; required for UDP2RAW to work correctly.";
+      };
     };
   };
 
@@ -108,6 +113,29 @@ in {
             description = "UDP2RAW client for ${name}.";
           }))
       cfg.clients)
+
+      (mkIf (cfg.servers != {} || cfg.clients != {}) {
+        udp2raw-disable-gro = {
+          description = "Disable GRO and LRO for UDP2RAW and ensure they stay off.";
+          wantedBy = ["multi-user.target"];
+          wants = ["network.target"];
+          after = ["network.target"];
+          path = with pkgs; [ethtool];
+          script = ''
+            while true; do
+              for iface in ${concatMapStringsSep " " escapeShellArg cfg.interfaces}; do
+                ethtool -K "$iface" gro off lro off
+                sleep 5
+              done
+            done
+          '';
+          postStop = ''
+            for iface in ${concatMapStringsSep " " escapeShellArg cfg.interfaces}; do
+              ethtool -K "$iface" gro on lro on
+            done
+          '';
+        };
+      })
     ];
   };
 }
