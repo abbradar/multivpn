@@ -39,6 +39,8 @@ in {
       };
     };
 
+    systemd.services.mtprotoproxy.unitConfig.NFTSet = "cgroup:inet:multivpn-filter:vpn-services";
+
     systemd.services.vpn-credentials-mtprotoproxy = {
       description = "Prepare the client credentials for the MTPROTO proxy.";
       wantedBy = ["multi-user.target"];

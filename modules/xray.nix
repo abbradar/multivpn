@@ -59,6 +59,9 @@ in {
       });
     };
 
-    systemd.services.xray.serviceConfig.PrivateTmp = true;
+    systemd.services.xray = {
+      unitConfig.NFTSet = "cgroup:inet:multivpn-filter:vpn-services";
+      serviceConfig.PrivateTmp = true;
+    };
   };
 }
