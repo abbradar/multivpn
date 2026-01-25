@@ -140,7 +140,10 @@ in {
     services.nginx = mkIf useLocalUpstream {
       enable = true;
       virtualHosts.${rootCfg.domain} = {
-        useACMEHost = rootCfg.domain;
+        # useACMEHost = rootCfg.domain;
+	# addSSL = true;
+	enableACME = true;
+	forceSSL = true;
         listen = [
           {
             addr = "127.0.0.1";
@@ -148,6 +151,10 @@ in {
             ssl = true;
             proxyProtocol = true;
           }
+	  {
+            addr = "[::]";
+	    port = 80;
+	  }
         ];
       };
     };

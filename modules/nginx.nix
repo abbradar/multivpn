@@ -21,7 +21,7 @@ in {
     };
   };
 
-  config = {
+  config = mkIf false {
     services.nginx = mkIf cfg.enableCustomHTTPS {
       appendHttpConfig = ''
         server {
