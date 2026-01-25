@@ -62,7 +62,7 @@ in {
     systemd.services.xray = {
       serviceConfig = {
         PrivateTmp = true;
-        NFTSet = "cgroup:inet:multivpn:vpn-services";
+        NFTSet = "cgroup:inet:multivpn:vpnservices";
       };
     };
   };

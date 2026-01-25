@@ -42,22 +42,28 @@ in {
           content = let
             setVpnMark = "ct mark set (ct mark | ${toString cfg.fwmark}) meta mark set (meta mark | ${toString cfg.fwmark}) accept";
           in ''
+	    chain postrouting {
+	      type nat hook postrouting priority srcnat; policy accept;
+	      meta mark & ${toString cfg.fwmark} == 0 accept
+	      masquerade
+	    }
+
             chain filter {
               ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
               ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
             }
 
-            chain forward {
-              type filter hook forward priority filter; policy accept;
-
-              meta mark & ${toString cfg.fwmark} == 0 accept
-              ct state { established, related } accept
-
-              jump filter
-
-              # Clamp MSS to MTU.
-              tcp flags syn tcp option maxseg size set rt mtu
-            }
+            # chain forward {
+            #   type filter hook forward priority filter; policy accept;
+            #
+            #   meta mark & ${toString cfg.fwmark} == 0 accept
+            #   ct state { established, related } accept
+            #
+            #   jump filter
+            #
+            #   # Clamp MSS to MTU.
+            #   tcp flags syn tcp option maxseg size set rt mtu
+            # }
 
             # `meta mark set (meta mark or (ct mark and ${toString cfg.fwmark}))` doesn't work, so we use a separate check.
             chain restore-mark {
@@ -87,16 +93,16 @@ in {
               jump filter
             }
 
-            # Populated by systemd.
-            set vpn-services {
+            # Populated by systemd. The name is required to not contain dashes.
+            set vpnservices {
               type cgroupsv2
             }
 
             chain mark-output {
-              type filter hook output priority mangle; policy accept;
+              type route hook output priority mangle; policy accept;
 
               ct state { established, related } goto restore-mark
-              socket cgroupv2 level 2 @vpn-services ${setVpnMark} # MULTIVPN_NOCHECK
+              socket cgroupv2 level 2 @vpnservices ${setVpnMark} # MULTIVPN_NOCHECK
             };
           '';
         };
@@ -105,10 +111,7 @@ in {
         '';
       };
 
-      nat = {
-        enable = true;
-        internalInterfaces = cfg.vpnInterfaces;
-      };
+      nat.enable = true;
     };
   };
 }
