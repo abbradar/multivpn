@@ -35,7 +35,7 @@ in {
   };
 
   config = mkIf (rootCfg.enable && cfg.enable) {
-    multivpn.vpnInterfaces = [dev];
+    multivpn.firewall.vpnInterfaces = [dev];
 
     networking.firewall = {
       allowedTCPPorts = [53]; # DNS

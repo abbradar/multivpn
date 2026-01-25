@@ -59,11 +59,13 @@ in {
       }
     ];
 
-    multivpn.vpnInterfaces = [dev];
+    multivpn.firewall.vpnInterfaces = [dev];
 
-    networking.firewall.allowedUDPPorts = [port];
+    networking = {
+      firewall.allowedUDPPorts = [port];
 
-    networking.nat.enableIPv6 = mkIf (cfg.subnet6 != null) true;
+      nat.enableIPv6 = mkIf (cfg.subnet6 != null) true;
+    };
 
     # TODO: IPv6
     services.openvpn.servers.server.config = ''

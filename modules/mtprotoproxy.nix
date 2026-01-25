@@ -39,26 +39,28 @@ in {
       };
     };
 
-    systemd.services.mtprotoproxy.unitConfig.NFTSet = "cgroup:inet:multivpn-filter:vpn-services";
+    systemd.services = {
+      mtprotoproxy.unitConfig.NFTSet = "cgroup:inet:multivpn-filter:vpn-services";
 
-    systemd.services.vpn-credentials-mtprotoproxy = {
-      description = "Prepare the client credentials for the MTPROTO proxy.";
-      wantedBy = ["multi-user.target"];
-      serviceConfig = {
-        Type = "oneshot";
-        StateDirectory = "vpn-credentials";
-        StateDirectoryMode = "0700";
-        WorkingDirectory = "/var/lib/vpn-credentials";
+      vpn-credentials-mtprotoproxy = {
+        description = "Prepare the client credentials for the MTPROTO proxy.";
+        wantedBy = ["multi-user.target"];
+        serviceConfig = {
+          Type = "oneshot";
+          StateDirectory = "vpn-credentials";
+          StateDirectoryMode = "0700";
+          WorkingDirectory = "/var/lib/vpn-credentials";
+        };
+        script = ''
+          mkdir -p mtprotoproxy
+          domain=${escapeShellArg rootCfg.domain}
+          port=${toString port}
+          key=${escapeShellArg cfg.key}
+          suffix=$(od -A n -t x1 <<< ${escapeShellArg cfg.tlsDomain} | tr -d ' \n')
+          secret="ee$key$suffix"
+          cat <<< "https://t.me/proxy?server=$domain&port=$port&secret=$secret" > mtprotoproxy/link.url
+        '';
       };
-      script = ''
-        mkdir -p mtprotoproxy
-        domain=${escapeShellArg rootCfg.domain}
-        port=${toString port}
-        key=${escapeShellArg cfg.key}
-        suffix=$(od -A n -t x1 <<< ${escapeShellArg cfg.tlsDomain} | tr -d ' \n')
-        secret="ee$key$suffix"
-        cat <<< "https://t.me/proxy?server=$domain&port=$port&secret=$secret" > mtprotoproxy/link.url
-      '';
     };
   };
 }

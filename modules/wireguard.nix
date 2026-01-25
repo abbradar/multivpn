@@ -126,7 +126,7 @@ in {
       instance.peers)
     cfg.instances);
 
-    multivpn.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
+    multivpn.firewall.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
 
     multivpn.udp2raw.servers = concatMapAttrs (name: instance:
       optionalAttrs instance.enableUDP2RAW {
