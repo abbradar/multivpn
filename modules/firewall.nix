@@ -14,7 +14,7 @@
 
   commonChains = ''
     chain multivpn-filter {
-      type filter;
+      type filter; policy drop;
 
       ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
       ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
@@ -23,19 +23,30 @@
     }
 
     chain forward {
-      type filter hook forward priority filter;
+      type filter hook forward priority filter; policy accept;
 
+      meta mark and ${toString vpnMark} == 0 accept
       ct state {established, related} accept
-      meta mark and ${toString vpnMark} == ${toString vpnMark} jump multivpn-filter
-      accept
+
+      jump multivpn-filter
+
+      # Clamp MSS to MTU.
+      tcp flags syn tcp option maxseg size set rt mtu
     }
 
     chain output {
-      type filter hook output priority filter;
+      type filter hook output priority filter; policy accept;
 
+      meta mark and ${toString vpnMark} == 0 accept
       ct state {established, related} accept
-      meta mark and ${toString vpnMark} == ${toString vpnMark} jump multivpn-filter
-      accept
+
+      # Allow local DNS resolution.
+      ip daddr 127.0.0.0/8 udp dport 53 accept
+      ip daddr 127.0.0.0/8 tcp dport 53 accept
+      ip6 daddr ::1/128 udp dport 53 accept
+      ip6 daddr ::1/128 tcp dport 53 accept
+
+      jump multivpn-filter
     }
 
     set vpn-services {
@@ -43,12 +54,12 @@
     }
 
     chain mark {
-      type filter hook prerouting priority mangle;
+      type filter hook prerouting priority mangle; policy accept;
 
       ct state {established, related} meta mark set (meta mark or (ct mark and ${toString cfg.fwmark})) accept
+
       ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
       socket cgroupv2 level 2 @vpn-services ${setVpnMark}
-      accept
     }
   '';
 in {
@@ -71,6 +82,9 @@ in {
   };
 
   config = mkIf rootCfg.enable {
+    # Since we ban non-local DNS resolution for security, we need a local DNS resolver.
+    services.resolved.enable = mkDefault true;
+
     networking = {
       nftables = {
         # To ease the configuration.
