@@ -40,7 +40,7 @@ in {
     };
 
     systemd.services = {
-      mtprotoproxy.unitConfig.NFTSet = "cgroup:inet:multivpn-filter:vpn-services";
+      mtprotoproxy.unitConfig.NFTSet = "cgroup:inet:multivpn:vpn-services";
 
       vpn-credentials-mtprotoproxy = {
         description = "Prepare the client credentials for the MTPROTO proxy.";

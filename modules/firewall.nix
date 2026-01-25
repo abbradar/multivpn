@@ -10,59 +10,6 @@ with lib; let
   addresses = import ./addresses.nix;
 
   vpnSetCheckedMark = bitOr vpnMark vpnCheckedMark;
-
-  setVpnMark = "ct mark set (ct mark or ${toString cfg.fwmark}) meta mark set (meta mark or ${toString cfg.fwmark}) accept";
-
-  commonChains = ''
-    chain multivpn-filter {
-      type filter; policy drop;
-
-      ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
-      ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
-
-      return
-    }
-
-    chain forward {
-      type filter hook forward priority filter; policy accept;
-
-      meta mark and ${toString vpnMark} == 0 accept
-      ct state {established, related} accept
-
-      jump multivpn-filter
-
-      # Clamp MSS to MTU.
-      tcp flags syn tcp option maxseg size set rt mtu
-    }
-
-    chain output {
-      type filter hook output priority filter; policy accept;
-
-      meta mark and ${toString vpnMark} == 0 accept
-      ct state {established, related} accept
-
-      # Allow local DNS resolution.
-      ip daddr 127.0.0.0/8 udp dport 53 accept
-      ip daddr 127.0.0.0/8 tcp dport 53 accept
-      ip6 daddr ::1/128 udp dport 53 accept
-      ip6 daddr ::1/128 tcp dport 53 accept
-
-      jump multivpn-filter
-    }
-
-    set vpn-services {
-      type cgroupsv2
-    }
-
-    chain mark {
-      type filter hook prerouting priority mangle; policy accept;
-
-      ct state {established, related} meta mark set (meta mark or (ct mark and ${toString cfg.fwmark})) accept
-
-      ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
-      socket cgroupv2 level 2 @vpn-services ${setVpnMark}
-    }
-  '';
 in {
   options = {
     multivpn.firewall = {
@@ -75,8 +22,8 @@ in {
 
       fwmark = mkOption {
         type = types.int;
-        default = lib.fromHexString "0x100000";
-        literalExample = ''lib.fromHexString "0x100000"'';
+        default = fromHexString "0x100000";
+        example = literalExpression ''lib.fromHexString "0x100000"'';
         description = "Mark for VPN connections. Only set a single bit.";
       };
     };
@@ -90,51 +37,72 @@ in {
       nftables = {
         # To ease the configuration.
         enable = true;
-        tables = {
-          "multivpn-filter" = {
-            family = "inet";
-            content = ''
-              chain multivpn-filter {
-                type filter;
+        tables.multivpn = {
+          family = "inet";
+          content = let
+            setVpnMark = "ct mark set (ct mark | ${toString cfg.fwmark}) meta mark set (meta mark | ${toString cfg.fwmark}) accept";
+          in ''
+            chain filter {
+              ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
+              ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
+            }
 
-                ip daddr { ${concatStringsSep "," addresses.privateNetworks4} } drop
-                ip6 daddr { ${concatStringsSep "," addresses.privateNetworks6} } drop
+            chain forward {
+              type filter hook forward priority filter; policy accept;
 
-                return
-              }
+              meta mark & ${toString cfg.fwmark} == 0 accept
+              ct state { established, related } accept
 
-              chain forward {
-                type filter hook forward priority filter;
+              jump filter
 
-                ct state {established, related} accept
-                meta mark and ${toString vpnMark} == ${toString vpnMark} jump multivpn-filter
-                accept
-              }
+              # Clamp MSS to MTU.
+              tcp flags syn tcp option maxseg size set rt mtu
+            }
 
-              chain output {
-                type filter hook output priority filter;
+            # `meta mark set (meta mark or (ct mark and ${toString cfg.fwmark}))` doesn't work, so we use a separate check.
+            chain restore-mark {
+              ct mark & ${toString cfg.fwmark} != 0 meta mark set (meta mark | ${toString cfg.fwmark})
+              accept
+            }
 
-                ct state {established, related} accept
-                meta mark and ${toString vpnMark} == ${toString vpnMark} jump multivpn-filter
-                accept
-              }
+            chain mark-forward {
+              type filter hook prerouting priority mangle; policy accept;
 
-              # Populated by systemd.
-              set vpn-services {
-                type cgroupsv2
-              }
+              ct state { established, related } goto restore-mark
+              ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
+            }
 
-              chain mark {
-                type filter hook prerouting priority mangle;
+            chain output {
+              type filter hook output priority filter; policy accept;
 
-                ct state {established, related} meta mark set (meta mark or (ct mark and ${toString cfg.fwmark})) accept
-                ${optionalString (cfg.vpnInterfaces != []) "meta iifname { ${concatStringsSep "," cfg.vpnInterfaces} } ${setVpnMark}"}
-                socket cgroupv2 level 2 @vpn-services ${setVpnMark}
-                accept
-              }
-            '';
-          };
+              meta mark and ${toString cfg.fwmark} == 0 accept
+              ct state { established, related } accept
+
+              # Allow local DNS resolution.
+              ip daddr 127.0.0.0/8 udp dport 53 accept
+              ip daddr 127.0.0.0/8 tcp dport 53 accept
+              ip6 daddr ::1/128 udp dport 53 accept
+              ip6 daddr ::1/128 tcp dport 53 accept
+
+              jump filter
+            }
+
+            # Populated by systemd.
+            set vpn-services {
+              type cgroupsv2
+            }
+
+            chain mark-output {
+              type filter hook output priority mangle; policy accept;
+
+              ct state { established, related } goto restore-mark
+              socket cgroupv2 level 2 @vpn-services ${setVpnMark} # MULTIVPN_NOCHECK
+            };
+          '';
         };
+        preCheckRuleset = ''
+          sed '/MULTIVPN_NOCHECK/d' -i ruleset.conf
+        '';
       };
 
       nat = {
