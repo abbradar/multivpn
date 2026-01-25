@@ -131,9 +131,7 @@ in {
       };
     };
 
-    security.acme.certs.${rootCfg.domain}.postRun = ''
-      ${config.systemd.package}/bin/systemctl restart xray
-    '';
+    security.acme.certs.${rootCfg.domain}.reloadServices = ["xray.service"];
 
     multivpn.nginx.enableCustomHTTPS = true;
 

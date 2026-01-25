@@ -140,6 +140,7 @@ in {
     services.nginx = mkIf useLocalUpstream {
       enable = true;
       virtualHosts.${rootCfg.domain} = {
+        useACMEHost = rootCfg.domain;
         listen = [
           {
             addr = "127.0.0.1";
@@ -152,6 +153,11 @@ in {
     };
 
     multivpn.nginx.enableCustomHTTPS = mkIf useLocalUpstream true;
+
+    security.acme.certs.${rootCfg.domain} = {
+      reloadServices = ["nginx.service"];
+      group = config.services.nginx.group;
+    };
 
     systemd.services = {
       vless-reality-forward-http = mkIf (!useLocalUpstream) {
