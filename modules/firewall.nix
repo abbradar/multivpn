@@ -76,7 +76,7 @@ in {
         type = types.int;
         default = lib.fromHexString "0x100000";
         literalExample = ''lib.fromHexString "0x100000"'';
-        description = "Mark for VPN connections.";
+        description = "Mark for VPN connections. Only set a single bit.";
       };
     };
   };
