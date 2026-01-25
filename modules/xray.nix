@@ -60,8 +60,10 @@ in {
     };
 
     systemd.services.xray = {
-      unitConfig.NFTSet = "cgroup:inet:multivpn:vpn-services";
-      serviceConfig.PrivateTmp = true;
+      serviceConfig = {
+        PrivateTmp = true;
+        NFTSet = "cgroup:inet:multivpn:vpn-services";
+      };
     };
   };
 }
