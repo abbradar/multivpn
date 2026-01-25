@@ -14,6 +14,7 @@ with lib; let
     options = {
       ipv4 = mkOption {
         type = types.nullOr types.str;
+        default = null;
         description = ''
           Peer's private IPv4 address.
         '';
@@ -21,6 +22,7 @@ with lib; let
 
       ipv6 = mkOption {
         type = types.nullOr types.str;
+        default = null;
         description = ''
           Peer's private IPv6 address.
         '';
@@ -39,12 +41,14 @@ with lib; let
     options = {
       ipv4 = mkOption {
         type = types.nullOr types.str;
+        default = null;
         example = "10.0.174.1";
         description = "Network address and a /24 subnet that Wireguard uses.";
       };
 
       ipv6 = mkOption {
         type = types.nullOr types.str;
+        default = null;
         example = "fd80:f700:3bb2::1";
         description = "Network address and a /64 subnet that Wireguard uses.";
       };
