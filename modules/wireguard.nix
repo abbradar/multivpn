@@ -57,8 +57,7 @@ with lib; let
       enableUDP2RAW = mkEnableOption "UDP2RAW support";
 
       internalPort = mkOption {
-        type = types.nullOr types.int;
-        default = null;
+        type = types.int;
         description = "Local port to listen on internally. Needed for UDP2RAW.";
       };
 
@@ -132,7 +131,8 @@ in {
       optionalAttrs instance.enableUDP2RAW {
         ${instance.device} = {
           port = instance.port;
-          destination = "127.0.0.1:${toString instance.internalPort}";
+          destination = "127.0.0.1";
+	  destinationPort = instance.internalPort;
         };
       })
     cfg.instances;
@@ -141,8 +141,8 @@ in {
       nat.enableIPv6 = mkMerge (mapAttrsToList (name: instance: mkIf (instance.ipv6 != null) true) cfg.instances);
 
       firewall = {
-        allowedUDPPorts = mkMerge (mapAttrsToList (mkIf (!instance.enableUDP2RAW) [instance.port]) cfg.instances);
-        allowedTCPPorts = mkMerge (mapAttrsToList (mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
+        allowedUDPPorts = mkMerge (mapAttrsToList (name: instance: mkIf (!instance.enableUDP2RAW) [instance.port]) cfg.instances);
+        allowedTCPPorts = mkMerge (mapAttrsToList (name: instance: mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
       };
 
       wireguard = {
@@ -152,14 +152,14 @@ in {
         interfaces = mapAttrs' (name: instance:
           nameValuePair instance.device {
             ips =
-              optional (cfg.ipv4 != null) "${cfg.ipv4}/24"
-              ++ optional (cfg.ipv6 != null) "${cfg.ipv6}/24";
+              optional (instance.ipv4 != null) "${instance.ipv4}/24"
+              ++ optional (instance.ipv6 != null) "${instance.ipv6}/24";
             type =
               if instance.amneziaWGOptions != {}
               then "amneziawg"
               else "wireguard";
             mtu = mkIf instance.enableUDP2RAW udp2rawMTU;
-            privateKeyFile = cfg.privateKeyFile;
+            privateKeyFile = instance.privateKeyFile;
             listenPort =
               if instance.enableUDP2RAW
               then instance.internalPort
@@ -167,8 +167,8 @@ in {
             peers =
               map (peer: {
                 allowedIPs =
-                  optional (peer.ipv4 != null) "${cfg.ipv4}/32"
-                  ++ optional (peer.ipv6 != null) "${cfg.ipv6}/128";
+                  optional (peer.ipv4 != null) "${peer.ipv4}/32"
+                  ++ optional (peer.ipv6 != null) "${peer.ipv6}/128";
                 inherit (peer) publicKey;
               })
               instance.peers;
@@ -193,7 +193,7 @@ in {
           dir=wireguard-${escapeShellArg name}
           mkdir -p "$dir"
           domain=${escapeShellArg rootCfg.domain}
-          public=$(wg pubkey < ${escapeShellArg cfg.privateKeyFile})
+          public=$(wg pubkey < ${escapeShellArg instance.privateKeyFile})
           cat > "$dir/wg.conf" <<EOF
           [Interface]
           PrivateKey = <private key>
