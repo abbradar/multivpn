@@ -39,13 +39,13 @@ in {
 
       subnet4 = mkOption {
         type = types.nullOr types.str;
-        example = "10.0.175.0";
+        default = "10.0.175.0";
         description = "An /24 IPv4 network subnet that OpenVPN uses.";
       };
 
       subnet6 = mkOption {
         type = types.nullOr types.str;
-        example = "fd80:f700:3bb2::";
+        default = "fd80:f700:3bb2::";
         description = "An /64 IPv6 network subnet that OpenVPN uses.";
       };
     };
