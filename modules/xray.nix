@@ -65,6 +65,8 @@ in {
       serviceConfig = {
         PrivateTmp = true;
         NFTSet = "cgroup:inet:multivpn:vpnservices";
+        # Ought to be upstreamed to NixOS.
+        Restart = mkDefault "on-failure";
       };
     };
   };
