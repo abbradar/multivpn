@@ -20,6 +20,11 @@ with lib; let
         description = "Port to listen on.";
       };
 
+      key = mkOption {
+        type = types.str;
+	description = "Cipher key.";
+      };
+
       destination = mkOption {
         type = types.str;
         example = "example.com";
@@ -54,8 +59,10 @@ with lib; let
         -r "$destination":${toString iface.destinationPort} \
         -a \
         --mtu-warn 1500 \
-        --cipher-mode none \
-        --auth-mode none ${concatMapStringsSep " " escapeShellArg extraOpts}
+        --cipher-mode aes128cfb \
+        --auth-mode hmac_sha1 \
+        --key ${escapeShellArg iface.key} \
+	${concatMapStringsSep " " escapeShellArg extraOpts}
     '';
   };
 in {
