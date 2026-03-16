@@ -127,14 +127,14 @@ in {
           script = ''
             while true; do
               for iface in ${concatMapStringsSep " " escapeShellArg cfg.interfaces}; do
-                ethtool -K "$iface" gro off lro off
+                ethtool -K "$iface" rx-gro-hw off gro off lro off
                 sleep 5
               done
             done
           '';
           postStop = ''
             for iface in ${concatMapStringsSep " " escapeShellArg cfg.interfaces}; do
-              ethtool -K "$iface" gro on lro on
+              ethtool -K "$iface" rx-gro-hw on gro on lro on
             done
           '';
         };
