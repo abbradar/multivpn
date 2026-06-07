@@ -21,10 +21,22 @@
       key = "changeme";
     };
 
+    # vless and vless-reality both bind port 443 — enable only one.
     vless = {
-      enable = true;
+      enable = false;
       # Generate with `uuidgen`
       id = "changeme";
+    };
+
+    vless-reality = {
+      enable = true;
+      transport = "xhttp";
+      # Generate with `xray uuid`
+      id = "changeme";
+      # Generate with `xray x25519` (use the "Private key" line)
+      privateKey = "changeme";
+      # destinationDomain = "www.microsoft.com";
+      # serverNames = ["www.microsoft.com"];
     };
 
     socks5 = {
