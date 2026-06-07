@@ -235,6 +235,10 @@ in {
             proxyProtocol = true;
           }
           {
+            addr = "0.0.0.0";
+            port = 80;
+          }
+          {
             addr = "[::]";
             port = 80;
           }
