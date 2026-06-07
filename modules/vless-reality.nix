@@ -210,7 +210,7 @@ in {
                     path = cfg.path;
                     mode = "auto";
                   }
-                  // obfsSettings;
+                  // extraXhttpSettings;
               };
           }
         ];
