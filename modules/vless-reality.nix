@@ -226,12 +226,12 @@ in {
       virtualHosts.${rootCfg.domain} = {
         enableACME = true;
         forceSSL = true;
+        http2 = true;
         listen = [
           {
             addr = "127.0.0.1";
             port = 8003;
             ssl = true;
-            http2 = true;
             proxyProtocol = true;
           }
           {
