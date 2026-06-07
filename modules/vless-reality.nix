@@ -105,7 +105,7 @@ in {
 
       transport = mkOption {
         type = types.enum ["vision" "xhttp"];
-        default = "vision";
+        default = "xhttp";
         description = ''
           REALITY transport. `vision` is the raw-TCP + XTLS-Vision flow.
           `xhttp` also uses XMUX.
