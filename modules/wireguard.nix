@@ -7,8 +7,11 @@
 with lib; let
   rootCfg = config.multivpn;
   cfg = rootCfg.protocols.wireguard;
-  # UDP2RAW adds 60 bytes of overhead.
-  udp2rawMTU = 1360;
+  # UDP2RAW adds 60 bytes of overhead, plus 36 bytes for aes128cbc padding (16)
+  # and the hmac_sha1 auth tag (20). 1340 is the max that keeps the worst-case
+  # packet within 1500 over an IPv6 outer path (which always carries a faketcp
+  # TCP timestamp option), while leaving a small margin.
+  udp2rawMTU = 1340;
 
   peerModule = {...}: {
     options = {
