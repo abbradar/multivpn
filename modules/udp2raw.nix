@@ -54,8 +54,9 @@ with lib; let
         -r "$destination":${toString iface.destinationPort} \
         -a \
         --mtu-warn 1500 \
-        --cipher-mode none \
-        --auth-mode none ${concatMapStringsSep " " escapeShellArg extraOpts}
+        --cipher-mode ${escapeShellArg cfg.cipherMode} \
+        --auth-mode ${escapeShellArg cfg.authMode} \
+        -k ${escapeShellArg cfg.key} ${concatMapStringsSep " " escapeShellArg extraOpts}
     '';
   };
 in {
@@ -90,6 +91,23 @@ in {
       interfaces = mkOption {
         type = types.listOf types.str;
         description = "Interfaces to disable GRO and LRO for; required for UDP2RAW to work correctly.";
+      };
+
+      key = mkOption {
+        type = types.str;
+        description = "Shared secret; must be identical on the server and all clients. Generate with `openssl rand -base64 32`.";
+      };
+
+      cipherMode = mkOption {
+        type = types.enum ["aes128cbc" "aes128cfb" "xor" "none"];
+        default = "aes128cbc";
+        description = "udp2raw --cipher-mode; must match on the server and all clients.";
+      };
+
+      authMode = mkOption {
+        type = types.enum ["hmac_sha1" "md5" "crc32" "simple" "none"];
+        default = "hmac_sha1";
+        description = "udp2raw --auth-mode; must match on the server and all clients.";
       };
     };
   };
