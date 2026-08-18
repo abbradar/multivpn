@@ -133,6 +133,9 @@ in {
       }
     ];
 
+    # Make `awg` available for inspecting/debugging the interfaces.
+    environment.systemPackages = mkIf (cfg.interfaces != {}) [pkgs.amneziawg-tools];
+
     systemd.services =
       mapAttrs' (dev: iface: nameValuePair "amneziawg-${dev}" (mkService dev iface))
       cfg.interfaces;
