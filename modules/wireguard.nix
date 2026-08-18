@@ -106,60 +106,6 @@ with lib; let
   # WireGuard instances keep using the kernel-backed networking.wireguard module.
   amneziaInstances = filterAttrs (_: instance: instance.amneziaWGOptions != {}) cfg.instances;
   plainInstances = filterAttrs (_: instance: instance.amneziaWGOptions == {}) cfg.instances;
-
-  # wg-level config applied via `awg setconf` (no Address/MTU, which awg rejects;
-  # those are handled by systemd-networkd). PrivateKey is prepended at runtime.
-  mkWgConfBody = instance: let
-    listenPort =
-      if instance.enableUDP2RAW
-      then instance.internalPort
-      else instance.port;
-    ifaceLines =
-      ["ListenPort = ${toString listenPort}"]
-      ++ mapAttrsToList (k: v: "${k} = ${toString v}") instance.amneziaWGOptions;
-    peerText = peer:
-      "\n[Peer]\n"
-      + "PublicKey = ${peer.publicKey}\n"
-      + "AllowedIPs = ${concatStringsSep ", " (
-        optional (peer.ipv4 != null) "${peer.ipv4}/32"
-        ++ optional (peer.ipv6 != null) "${peer.ipv6}/128"
-      )}\n";
-  in
-    pkgs.writeText "${instance.device}.conf"
-    (concatStringsSep "\n" ifaceLines + "\n" + concatMapStrings peerText instance.peers);
-
-  mkAwgService = name: instance: let
-    wgConf = mkWgConfBody instance;
-    dev = instance.device;
-    confPath = "/run/amneziawg-${name}/${dev}.conf";
-  in {
-    description = "AmneziaWG (userspace) tunnel - ${name}";
-    wantedBy = ["multi-user.target"];
-    after = ["network-pre.target"];
-    wants = ["network.target"];
-    before = ["network.target"];
-    path = [pkgs.amneziawg-tools];
-    serviceConfig = {
-      # amneziawg-go daemonizes only after the TUN device and UAPI socket are
-      # ready, so once the parent has forked the interface can be configured.
-      Type = "forking";
-      ExecStart = "${getExe pkgs.amneziawg-go} ${dev}";
-      Restart = "on-failure";
-      RestartSec = 5;
-      RuntimeDirectory = "amneziawg-${name}";
-      RuntimeDirectoryMode = "0700";
-    };
-    # Apply the wg-level crypto config (private key, peers, AmneziaWG options).
-    # Addressing, MTU and bringing the link up are handled by systemd-networkd.
-    postStart = ''
-      {
-        echo '[Interface]'
-        printf 'PrivateKey = %s\n' "$(cat ${escapeShellArg instance.privateKeyFile})"
-        cat ${wgConf}
-      } > ${escapeShellArg confPath}
-      awg setconf ${dev} ${escapeShellArg confPath}
-    '';
-  };
 in {
   options = {
     multivpn.protocols.wireguard = {
@@ -172,40 +118,33 @@ in {
   };
 
   config = {
-    assertions =
-      concatLists (mapAttrsToList (name: instance:
-        [
-          {
-            assertion = instance.ipv4 != null || instance.ipv6 != null;
-            message = "At least one IP address must be set for Wireguard instance ${name}.";
-          }
-          {
-            assertion = instance.enableUDP2RAW -> instance.udp2rawKey != "";
-            message = "udp2rawKey must be set for Wireguard instance ${name} when enableUDP2RAW is set.";
-          }
-        ]
-        ++ concatMap (peer: [
-          {
-            assertion = peer.ipv4 != null -> instance.ipv4 != null;
-            message = "The WireGuard instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
-          }
-          {
-            assertion = peer.ipv6 != null -> instance.ipv6 != null;
-            message = "The WireGuard instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
-          }
-          {
-            assertion = peer.ipv4 != null || peer.ipv6 != null;
-            message = "At least one IP address must be set for Wireguard peer ${name} of instance ${name}.";
-          }
-        ])
-        instance.peers)
-      cfg.instances)
-      ++ [
+    assertions = concatLists (mapAttrsToList (name: instance:
+      [
         {
-          assertion = amneziaInstances != {} -> config.systemd.network.enable;
-          message = "multivpn: AmneziaWG instances require systemd-networkd; set networking.useNetworkd = true (or systemd.network.enable = true).";
+          assertion = instance.ipv4 != null || instance.ipv6 != null;
+          message = "At least one IP address must be set for Wireguard instance ${name}.";
         }
-      ];
+        {
+          assertion = instance.enableUDP2RAW -> instance.udp2rawKey != "";
+          message = "udp2rawKey must be set for Wireguard instance ${name} when enableUDP2RAW is set.";
+        }
+      ]
+      ++ concatMap (peer: [
+        {
+          assertion = peer.ipv4 != null -> instance.ipv4 != null;
+          message = "The WireGuard instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
+        }
+        {
+          assertion = peer.ipv6 != null -> instance.ipv6 != null;
+          message = "The WireGuard instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
+        }
+        {
+          assertion = peer.ipv4 != null || peer.ipv6 != null;
+          message = "At least one IP address must be set for Wireguard peer ${name} of instance ${name}.";
+        }
+      ])
+      instance.peers)
+    cfg.instances);
 
     multivpn = {
       firewall.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
@@ -220,6 +159,25 @@ in {
           };
         })
       cfg.instances;
+
+      services.amneziawg.interfaces = mapAttrs' (name: instance:
+        nameValuePair instance.device {
+          privateKeyFile = instance.privateKeyFile;
+          listenPort =
+            if instance.enableUDP2RAW
+            then instance.internalPort
+            else instance.port;
+          settings = instance.amneziaWGOptions;
+          peers =
+            map (peer: {
+              inherit (peer) publicKey;
+              allowedIPs =
+                optional (peer.ipv4 != null) "${peer.ipv4}/32"
+                ++ optional (peer.ipv6 != null) "${peer.ipv6}/128";
+            })
+            instance.peers;
+        })
+      amneziaInstances;
     };
 
     networking = {
@@ -230,8 +188,8 @@ in {
         allowedTCPPorts = mkMerge (mapAttrsToList (name: instance: mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
       };
 
-      # AmneziaWG instances are handled below via a systemd service running
-      # amneziawg-go; only plain WireGuard instances use this kernel-backed path.
+      # AmneziaWG instances are handled by the amneziawg module (userspace
+      # amneziawg-go); only plain WireGuard instances use this kernel-backed path.
       wireguard.interfaces = mapAttrs' (name: instance:
         nameValuePair instance.device {
           ips =
@@ -255,8 +213,8 @@ in {
       plainInstances;
     };
 
-    # systemd-networkd (already enabled system-wide) assigns addresses/MTU and
-    # brings up the userspace AmneziaWG interfaces created by the services above.
+    # systemd-networkd assigns addresses/MTU and brings up the userspace
+    # AmneziaWG interfaces that the amneziawg module creates.
     systemd.network.networks = mapAttrs' (name: instance:
       nameValuePair "40-${instance.device}" {
         matchConfig.Name = instance.device;
@@ -269,48 +227,42 @@ in {
       })
     amneziaInstances;
 
-    systemd.services = mkMerge [
-      (mapAttrs' (name: instance:
-        nameValuePair "amneziawg-${name}" (mkAwgService name instance))
-      amneziaInstances)
+    systemd.services = mapAttrs' (name: instance:
+      nameValuePair "vpn-credentials-wireguard-${name}" {
+        description = "Prepare the client credentials for Wireguard.";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [wireguard-tools];
+        serviceConfig = {
+          Type = "oneshot";
+          StateDirectory = "vpn-credentials";
+          StateDirectoryMode = "0700";
+          WorkingDirectory = "/var/lib/vpn-credentials";
+        };
+        script = ''
+          dir=wireguard-${escapeShellArg name}
+          mkdir -p "$dir"
+          domain=${escapeShellArg rootCfg.domain}
+          public=$(wg pubkey < ${escapeShellArg instance.privateKeyFile})
+          cat > "$dir/wg.conf" <<EOF
+          [Interface]
+          PrivateKey = <private key>
+          Address = ${concatStringsSep "," (optional (instance.ipv4 != null) "<ipv4>/32" ++ optional (instance.ipv6 != null) "<ipv6>/128")}
+          ${optionalString instance.enableUDP2RAW ''
+            MTU = ${toString udp2rawMTU}
+          ''}
+          ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
+              ${name} = ${toString value}
+            '')
+            instance.amneziaWGOptions)}
 
-      (mapAttrs' (name: instance:
-        nameValuePair "vpn-credentials-wireguard-${name}" {
-          description = "Prepare the client credentials for Wireguard.";
-          wantedBy = ["multi-user.target"];
-          path = with pkgs; [wireguard-tools];
-          serviceConfig = {
-            Type = "oneshot";
-            StateDirectory = "vpn-credentials";
-            StateDirectoryMode = "0700";
-            WorkingDirectory = "/var/lib/vpn-credentials";
-          };
-          script = ''
-            dir=wireguard-${escapeShellArg name}
-            mkdir -p "$dir"
-            domain=${escapeShellArg rootCfg.domain}
-            public=$(wg pubkey < ${escapeShellArg instance.privateKeyFile})
-            cat > "$dir/wg.conf" <<EOF
-            [Interface]
-            PrivateKey = <private key>
-            Address = ${concatStringsSep "," (optional (instance.ipv4 != null) "<ipv4>/32" ++ optional (instance.ipv6 != null) "<ipv6>/128")}
-            ${optionalString instance.enableUDP2RAW ''
-              MTU = ${toString udp2rawMTU}
-            ''}
-            ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
-                ${name} = ${toString value}
-              '')
-              instance.amneziaWGOptions)}
-
-            [Peer]
-            Endpoint = $domain:${toString instance.port}
-            PublicKey = $public
-            AllowedIPs = ${concatStringsSep "," (optional (instance.ipv4 != null) "0.0.0.0/0" ++ optional (instance.ipv6 != null) "::/0")}
-            PersistentKeepalive = 25
-            EOF
-          '';
-        })
-      cfg.instances)
-    ];
+          [Peer]
+          Endpoint = $domain:${toString instance.port}
+          PublicKey = $public
+          AllowedIPs = ${concatStringsSep "," (optional (instance.ipv4 != null) "0.0.0.0/0" ++ optional (instance.ipv6 != null) "::/0")}
+          PersistentKeepalive = 25
+          EOF
+        '';
+      })
+    cfg.instances;
   };
 }
