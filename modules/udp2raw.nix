@@ -33,7 +33,7 @@ with lib; let
 
       key = mkOption {
         type = types.str;
-        description = "Shared secret for this tunnel; must be identical on both ends. Generate with `openssl rand -base64 32`.";
+        description = "Shared secret for this tunnel; must be identical on both ends. Only referenced when cipherMode or authMode is not \"none\", so it may be left unset for an unencrypted tunnel (NixOS then errors with a readable \"used but not defined\" message only if a mode does need it). Generate with `openssl rand -base64 32`.";
       };
 
       cipherMode = mkOption {
@@ -50,6 +50,8 @@ with lib; let
     };
   };
 
+  needsKey = iface: iface.cipherMode != "none" || iface.authMode != "none";
+
   mkSystemdUnit = iface: extraOpts: {
     path = with pkgs; [getent gawk udp2raw];
     wantedBy = ["multi-user.target"];
@@ -60,9 +62,16 @@ with lib; let
       RestartSec = 5;
     };
     script = ''
-      destination=$(getent hosts ${escapeShellArg iface.destination} | awk '{ if ($1 ~ /:/) { print "[" $1 "]" } else { print $1 }; exit }')
+      # Strip any config-supplied brackets (IPv6 literal), resolve via getent
+      # ahosts (getaddrinfo — passes IP literals through, resolves hostnames,
+      # and never reverse-resolves an IP the way `getent hosts` does), then
+      # re-bracket an IPv6 result for udp2raw's host:port parser.
+      dest=${escapeShellArg iface.destination}
+      dest=''${dest#"["}
+      dest=''${dest%"]"}
+      destination=$(getent ahosts "$dest" | awk '{ if ($1 ~ /:/) { print "[" $1 "]" } else { print $1 }; exit }')
       if [ -z "$destination" ]; then
-        echo "Failed to resolve "${escapeShellArg iface.destination}
+        echo "Failed to resolve $dest"
         exit 1
       fi
 
@@ -72,8 +81,8 @@ with lib; let
         -a \
         --mtu-warn 1500 \
         --cipher-mode ${escapeShellArg iface.cipherMode} \
-        --auth-mode ${escapeShellArg iface.authMode} \
-        -k ${escapeShellArg iface.key} ${concatMapStringsSep " " escapeShellArg extraOpts}
+        --auth-mode ${escapeShellArg iface.authMode}${optionalString (needsKey iface) " -k ${escapeShellArg iface.key}"} \
+        ${concatMapStringsSep " " escapeShellArg extraOpts}
     '';
   };
 in {
@@ -113,6 +122,10 @@ in {
   };
 
   config = {
+    # No assertion for a missing key: `key` is a required option that the unit
+    # only reads when a cipher/auth mode is set, so an unset key on an
+    # unencrypted tunnel is fine and a needed-but-unset key trips NixOS's own
+    # readable "used but not defined" error.
     systemd.services = mkMerge [
       (mapAttrs' (name: iface:
         nameValuePair "udp2raw-server-${name}" (mkSystemdUnit iface ["-s"]
