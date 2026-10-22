@@ -26,7 +26,15 @@ in {
       # We can't use `settings` because it's checked with XRay, which then
       # fails because it cannot find the SSL certificate.
       settingsFile = pkgs.writeText "xray.json" (builtins.toJSON {
-        inbounds = cfg.inbounds;
+        # No keep alive by default, prune stale connections.
+        inbounds =
+          map (recursiveUpdate {
+            streamSettings.sockopt = {
+              tcpKeepAliveIdle = 300;
+              tcpKeepAliveInterval = 30;
+            };
+          })
+          cfg.inbounds;
         routing = {
           domainStrategy = "IPIfNonMatch";
           rules = [
