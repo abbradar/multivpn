@@ -87,18 +87,13 @@ in {
       cert /var/lib/openvpn-server/server.crt
       ca /var/lib/openvpn-server/ca.crt
       tls-auth /var/lib/openvpn-server/ta.key 0
-      dh ${config.security.dhparams.path}/openvpn.pem
+      dh none
       duplicate-cn
       cipher AES-256-GCM
 
       ping-timer-rem
       keepalive 10 60
     '';
-
-    security.dhparams = {
-      enable = true;
-      params.openvpn = 2048;
-    };
 
     systemd.services = {
       init-openvpn-server = {
