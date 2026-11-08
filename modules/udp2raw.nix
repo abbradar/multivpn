@@ -93,6 +93,7 @@ with lib; let
           -l ${escapeShellArg (mvLib.hostPort iface.address iface.port)} \
           -r "$destination":${toString iface.destinationPort} \
           --mtu-warn 1500 \
+          --disable-color \
           --cipher-mode ${escapeShellArg iface.cipherMode} \
           --auth-mode ${escapeShellArg iface.authMode}${optionalString (needsKey iface) " -k ${escapeShellArg iface.key}"} \
           ${concatMapStringsSep " " escapeShellArg extraOpts}
