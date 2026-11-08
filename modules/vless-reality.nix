@@ -249,8 +249,11 @@ in {
     systemd.services = {
       vless-reality-forward-http = mkIf (!useLocalUpstream) {
         description = "Forward HTTP traffic to the target domain.";
-        wantedBy = ["multi-user.target"];
-        serviceConfig.ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:80,fork,reuseaddr TCP:${cfg.destinationDomain}:80";
+        after = ["network.target"];
+        serviceConfig = {
+          ExecStart = "${pkgs.socat}/bin/socat ACCEPT-FD:3,fork TCP:${cfg.destinationDomain}:80";
+          DynamicUser = true;
+        };
       };
 
       vpn-credentials-vless-reality = {
@@ -283,6 +286,12 @@ in {
           }
         '';
       };
+    };
+
+    systemd.sockets.vless-reality-forward-http = mkIf (!useLocalUpstream) {
+      description = "Forward HTTP traffic to the target domain.";
+      wantedBy = ["sockets.target"];
+      listenStreams = ["80"];
     };
   };
 }
