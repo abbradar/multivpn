@@ -85,12 +85,10 @@ with lib; let
 
   mkService = dev: iface: let
     confBody = mkConfBody iface;
-    confPath = "/run/amneziawg-${dev}/${dev}.conf";
   in {
     description = "AmneziaWG (userspace) interface ${dev}.";
     wantedBy = ["multi-user.target"];
     after = ["network-pre.target"];
-    wants = ["network.target"];
     before = ["network.target"];
     path = [pkgs.amneziawg-tools];
     serviceConfig = {
@@ -100,17 +98,23 @@ with lib; let
       ExecStart = "${getExe pkgs.amneziawg-go} ${dev}";
       Restart = "on-failure";
       RestartSec = 5;
-      RuntimeDirectory = "amneziawg-${dev}";
-      RuntimeDirectoryMode = "0700";
+      DynamicUser = true;
+      # Shared by all interfaces, as their UAPI sockets live in the same directory.
+      User = "amneziawg";
+      RuntimeDirectory = "amneziawg";
+      RuntimeDirectoryPreserve = true;
+      AmbientCapabilities =
+        ["CAP_NET_ADMIN"]
+        ++ optional (iface.listenPort != null && iface.listenPort < 1024) "CAP_NET_BIND_SERVICE";
+      LoadCredential = "private-key:${iface.privateKeyFile}";
     };
     # Apply the wg-level crypto config (private key, peers, AmneziaWG options).
     postStart = ''
-      {
+      awg setconf ${dev} <(
         echo '[Interface]'
-        printf 'PrivateKey = %s\n' "$(cat ${escapeShellArg iface.privateKeyFile})"
+        printf 'PrivateKey = %s\n' "$(cat "$CREDENTIALS_DIRECTORY/private-key")"
         cat ${confBody}
-      } > ${escapeShellArg confPath}
-      awg setconf ${dev} ${escapeShellArg confPath}
+      )
     '';
   };
 in {
