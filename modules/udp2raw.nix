@@ -2,16 +2,18 @@
   lib,
   config,
   pkgs,
+  utils,
   ...
 }:
 with lib; let
   cfg = config.multivpn.services.udp2raw;
+  mvLib = import ./lib.nix {inherit lib;};
 
   instanceModule = {...}: {
     options = {
       address = mkOption {
-        type = types.str;
-        example = "[::]";
+        type = mvLib.types.ipAddress;
+        example = "::";
         description = "Address to listen on.";
       };
 
@@ -52,39 +54,51 @@ with lib; let
 
   needsKey = iface: iface.cipherMode != "none" || iface.authMode != "none";
 
-  mkSystemdUnit = iface: extraOpts: {
-    path = with pkgs; [getent gawk udp2raw];
-    wantedBy = ["multi-user.target"];
-    wants = ["network.target"];
-    after = ["network.target"];
-    serviceConfig = {
-      Restart = "always";
-      RestartSec = 5;
-    };
-    script = ''
-      # Strip any config-supplied brackets (IPv6 literal), resolve via getent
-      # ahosts (getaddrinfo — passes IP literals through, resolves hostnames,
-      # and never reverse-resolves an IP the way `getent hosts` does), then
-      # re-bracket an IPv6 result for udp2raw's host:port parser.
-      dest=${escapeShellArg iface.destination}
-      dest=''${dest#"["}
-      dest=''${dest%"]"}
-      destination=$(getent ahosts "$dest" | awk '{ if ($1 ~ /:/) { print "[" $1 "]" } else { print $1 }; exit }')
-      if [ -z "$destination" ]; then
-        echo "Failed to resolve $dest"
-        exit 1
-      fi
+  group = "udp2raw";
 
-      exec udp2raw \
-        -l ${escapeShellArg iface.address}:${toString iface.port} \
-        -r "$destination":${toString iface.destinationPort} \
-        -a \
-        --mtu-warn 1500 \
-        --cipher-mode ${escapeShellArg iface.cipherMode} \
-        --auth-mode ${escapeShellArg iface.authMode}${optionalString (needsKey iface) " -k ${escapeShellArg iface.key}"} \
-        ${concatMapStringsSep " " escapeShellArg extraOpts}
-    '';
-  };
+  # Use nftables instead of udp2raw's -a option.
+  serverRule = iface:
+    if iface.address == "::"
+    then "meta nfproto ipv6 tcp dport ${toString iface.port} drop"
+    else if iface.address == "0.0.0.0"
+    then "meta nfproto ipv4 tcp dport ${toString iface.port} drop"
+    else "${mvLib.nftFamily iface.address} daddr ${iface.address} tcp dport ${toString iface.port} drop";
+
+  mkSystemdUnit = iface: extraOpts: extraConfig:
+    recursiveUpdate {
+      path = with pkgs; [getent gawk udp2raw];
+      wantedBy = ["multi-user.target"];
+      after = ["network.target"];
+      serviceConfig = {
+        Restart = "always";
+        RestartSec = 5;
+        DynamicUser = true;
+        AmbientCapabilities = ["CAP_NET_RAW"];
+      };
+      script = ''
+        # Strip any config-supplied brackets (IPv6 literal), resolve via getent
+        # ahosts (getaddrinfo — passes IP literals through, resolves hostnames,
+        # and never reverse-resolves an IP the way `getent hosts` does), then
+        # re-bracket an IPv6 result for udp2raw's host:port parser.
+        dest=${escapeShellArg iface.destination}
+        dest=''${dest#"["}
+        dest=''${dest%"]"}
+        destination=$(getent ahosts "$dest" | awk '{ if ($1 ~ /:/) { print "[" $1 "]" } else { print $1 }; exit }')
+        if [ -z "$destination" ]; then
+          echo "Failed to resolve $dest"
+          exit 1
+        fi
+
+        exec udp2raw \
+          -l ${escapeShellArg (mvLib.hostPort iface.address iface.port)} \
+          -r "$destination":${toString iface.destinationPort} \
+          --mtu-warn 1500 \
+          --cipher-mode ${escapeShellArg iface.cipherMode} \
+          --auth-mode ${escapeShellArg iface.authMode}${optionalString (needsKey iface) " -k ${escapeShellArg iface.key}"} \
+          ${concatMapStringsSep " " escapeShellArg extraOpts}
+      '';
+    }
+    extraConfig;
 in {
   options = {
     multivpn.services.udp2raw = {
@@ -94,7 +108,7 @@ in {
           {
             config.address = mkDefault (
               if config.networking.enableIPv6
-              then "[::]"
+              then "::"
               else "0.0.0.0"
             );
           }
@@ -118,6 +132,13 @@ in {
         type = types.listOf types.str;
         description = "Interfaces to disable GRO and LRO for; required for UDP2RAW to work correctly.";
       };
+
+      connMark = mkOption {
+        type = types.int;
+        default = fromHexString "0x200000";
+        example = literalExpression ''lib.fromHexString "0x200000"'';
+        description = "Conntrack mark for UDP2RAW connections. Only set a single bit.";
+      };
     };
   };
 
@@ -126,28 +147,39 @@ in {
     # only reads when a cipher/auth mode is set, so an unset key on an
     # unencrypted tunnel is fine and a needed-but-unset key trips NixOS's own
     # readable "used but not defined" error.
+    assertions = optional (cfg.servers != {} || cfg.clients != {}) {
+      assertion = config.networking.nftables.enable;
+      message = "multivpn: UDP2RAW requires nftables for its firewall rules; set networking.nftables.enable = true.";
+    };
+
     systemd.services = mkMerge [
       (mapAttrs' (name: iface:
-        nameValuePair "udp2raw-server-${name}" (mkSystemdUnit iface ["-s"]
-          // {
-            description = "UDP2RAW server for ${name}.";
-          }))
+        nameValuePair "udp2raw-server-${name}" (mkSystemdUnit iface ["-s"] {
+          description = "UDP2RAW server for ${name}.";
+        }))
       cfg.servers)
 
       (mapAttrs' (name: iface:
-        nameValuePair "udp2raw-client-${name}" (mkSystemdUnit iface ["-c"]
-          // {
-            description = "UDP2RAW client for ${name}.";
-          }))
+        nameValuePair "udp2raw-client-${name}" (mkSystemdUnit iface ["-c"] {
+          description = "UDP2RAW client for ${name}.";
+          serviceConfig.Group = group;
+        }))
       cfg.clients)
 
       (mkIf (cfg.servers != {} || cfg.clients != {}) {
-        udp2raw-disable-gro = {
+        udp2raw-disable-gro = let
+          devices = map (iface: "sys-subsystem-net-devices-${utils.escapeSystemdPath iface}.device") cfg.interfaces;
+        in {
           description = "Disable GRO and LRO for UDP2RAW and ensure they stay off.";
           wantedBy = ["multi-user.target"];
-          wants = ["network.target"];
-          after = ["network.target"];
+          bindsTo = devices;
+          after = ["network-pre.target"] ++ devices;
+          before = ["network.target"];
           path = with pkgs; [ethtool];
+          serviceConfig = {
+            DynamicUser = true;
+            AmbientCapabilities = ["CAP_NET_ADMIN"];
+          };
           script = ''
             while true; do
               for iface in ${concatMapStringsSep " " escapeShellArg cfg.interfaces}; do
@@ -162,6 +194,44 @@ in {
             done
           '';
         };
+      })
+    ];
+
+    users.groups.${group} = mkIf (cfg.clients != {}) {};
+
+    networking.nftables = mkMerge [
+      (mkIf (cfg.servers != {}) {
+        tables.udp2raw = {
+          family = "inet";
+          content = ''
+            chain server-input {
+              type filter hook input priority filter; policy accept;
+              ${concatMapStringsSep "\n" serverRule (attrValues cfg.servers)}
+            }
+          '';
+        };
+      })
+
+      (mkIf (cfg.clients != {}) {
+        tables.udp2raw = {
+          family = "inet";
+          content = let
+            mark = toString cfg.connMark;
+          in ''
+            chain client-output {
+              type filter hook output priority filter; policy accept;
+              meta l4proto tcp meta skgid ${group} ct mark set ct mark | ${mark} # MULTIVPN_NOCHECK
+            }
+
+            chain client-input {
+              type filter hook input priority filter; policy accept;
+              meta l4proto tcp ct mark & ${mark} != 0 drop
+            }
+          '';
+        };
+        preCheckRuleset = ''
+          sed '/MULTIVPN_NOCHECK/d' -i ruleset.conf
+        '';
       })
     ];
   };
