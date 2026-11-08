@@ -68,11 +68,9 @@ in {
     };
 
     systemd.services.xray = {
-      bindsTo = ["nftables.service"];
-      after = ["nftables.service"];
       serviceConfig = {
         PrivateTmp = true;
-        NFTSet = "cgroup:inet:multivpn:vpnservices";
+        Group = config.multivpn.firewall.vpnGroup;
         # Ought to be upstreamed to NixOS.
         Restart = mkDefault "on-failure";
       };

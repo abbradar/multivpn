@@ -33,12 +33,21 @@ in {
         internal = true;
         description = "Extra output rules.";
       };
+
+      vpnGroup = mkOption {
+        type = types.str;
+        default = "multivpn";
+        readOnly = true;
+        description = "Primary group of the VPN services; their traffic gets the VPN mark.";
+      };
     };
   };
 
   config = mkIf rootCfg.enable {
     # Since we ban non-local DNS resolution for security, we need a local DNS resolver.
     services.resolved.enable = mkDefault true;
+
+    users.groups.${cfg.vpnGroup} = {};
 
     networking = {
       nftables = {
@@ -102,16 +111,11 @@ in {
               jump filter
             }
 
-            # Populated by systemd. The name is required to not contain dashes.
-            set vpnservices {
-              type cgroupsv2
-            }
-
             chain mark-output {
               type route hook output priority mangle; policy accept;
 
               ct state { established, related } goto restore-mark
-              socket cgroupv2 level 2 @vpnservices ${setVpnMark} # MULTIVPN_NOCHECK
+              meta skgid ${cfg.vpnGroup} ${setVpnMark} # MULTIVPN_NOCHECK
             };
           '';
         };

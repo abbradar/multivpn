@@ -41,9 +41,8 @@ in {
 
     systemd.services = {
       mtprotoproxy = {
-        bindsTo = ["nftables.service"];
-        after = ["nftables.service"];
-        serviceConfig.NFTSet = "cgroup:inet:multivpn:vpnservices";
+        after = ["network.target"];
+        serviceConfig.Group = config.multivpn.firewall.vpnGroup;
       };
 
       vpn-credentials-mtprotoproxy = {
