@@ -42,6 +42,12 @@ with lib; let
         description = "WireGuard private key path. Generate with `wg genkey`.";
       };
 
+      headerProtectionKeyFile = mkOption {
+        type = types.nullOr types.path;
+        default = null;
+        description = "AmneziaWG 3 header protection key path; must match on both ends. Generate with `awg genkey`.";
+      };
+
       listenPort = mkOption {
         type = types.nullOr types.int;
         default = null;
@@ -106,13 +112,18 @@ with lib; let
       AmbientCapabilities =
         ["CAP_NET_ADMIN"]
         ++ optional (iface.listenPort != null && iface.listenPort < 1024) "CAP_NET_BIND_SERVICE";
-      LoadCredential = "private-key:${iface.privateKeyFile}";
+      LoadCredential =
+        ["private-key:${iface.privateKeyFile}"]
+        ++ optional (iface.headerProtectionKeyFile != null) "header-protection-key:${iface.headerProtectionKeyFile}";
     };
     # Apply the wg-level crypto config (private key, peers, AmneziaWG options).
     postStart = ''
       awg setconf ${dev} <(
         echo '[Interface]'
         printf 'PrivateKey = %s\n' "$(cat "$CREDENTIALS_DIRECTORY/private-key")"
+        if [ -e "$CREDENTIALS_DIRECTORY/header-protection-key" ]; then
+          printf 'HeaderProtectionKey = %s\n' "$(cat "$CREDENTIALS_DIRECTORY/header-protection-key")"
+        fi
         cat ${confBody}
       )
     '';

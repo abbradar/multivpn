@@ -73,12 +73,6 @@ with lib; let
         description = "udp2raw shared secret for this instance; must match the client connecting to it. Required when enableUDP2RAW is set. Generate with `openssl rand -base64 32`.";
       };
 
-      amneziaWGOptions = mkOption {
-        type = types.attrsOf (types.oneOf [types.str types.int]);
-        default = {};
-        description = "Options for AmneziaWG.";
-      };
-
       privateKeyFile = mkOption {
         type = types.path;
         description = "WireGuard private key path. Generate with `wg genkey`";
@@ -101,18 +95,13 @@ with lib; let
       device = "vpn-wg-${name}";
     };
   };
-
-  # AmneziaWG instances run via the userspace daemon (amneziawg-go); plain
-  # WireGuard instances keep using the kernel-backed networking.wireguard module.
-  amneziaInstances = filterAttrs (_: instance: instance.amneziaWGOptions != {}) cfg.instances;
-  plainInstances = filterAttrs (_: instance: instance.amneziaWGOptions == {}) cfg.instances;
 in {
   options = {
     multivpn.protocols.wireguard = {
       instances = mkOption {
         type = types.attrsOf (types.submodule instanceModule);
         default = {};
-        description = "WireGuard/AmneziaWG instances.";
+        description = "WireGuard instances.";
       };
     };
   };
@@ -159,25 +148,6 @@ in {
           };
         })
       cfg.instances;
-
-      services.amneziawg.interfaces = mapAttrs' (name: instance:
-        nameValuePair instance.device {
-          privateKeyFile = instance.privateKeyFile;
-          listenPort =
-            if instance.enableUDP2RAW
-            then instance.internalPort
-            else instance.port;
-          settings = instance.amneziaWGOptions;
-          peers =
-            map (peer: {
-              inherit (peer) publicKey;
-              allowedIPs =
-                optional (peer.ipv4 != null) "${peer.ipv4}/32"
-                ++ optional (peer.ipv6 != null) "${peer.ipv6}/128";
-            })
-            instance.peers;
-        })
-      amneziaInstances;
     };
 
     networking = {
@@ -188,8 +158,6 @@ in {
         allowedTCPPorts = mkMerge (mapAttrsToList (name: instance: mkIf instance.enableUDP2RAW [instance.port]) cfg.instances);
       };
 
-      # AmneziaWG instances are handled by the amneziawg module (userspace
-      # amneziawg-go); only plain WireGuard instances use this kernel-backed path.
       wireguard.interfaces = mapAttrs' (name: instance:
         nameValuePair instance.device {
           ips =
@@ -210,22 +178,8 @@ in {
             })
             instance.peers;
         })
-      plainInstances;
+      cfg.instances;
     };
-
-    # systemd-networkd assigns addresses/MTU and brings up the userspace
-    # AmneziaWG interfaces that the amneziawg module creates.
-    systemd.network.networks = mapAttrs' (name: instance:
-      nameValuePair "40-${instance.device}" {
-        matchConfig.Name = instance.device;
-        address =
-          optional (instance.ipv4 != null) "${instance.ipv4}/24"
-          ++ optional (instance.ipv6 != null) "${instance.ipv6}/24";
-        linkConfig = optionalAttrs instance.enableUDP2RAW {
-          MTUBytes = toString udp2rawMTU;
-        };
-      })
-    amneziaInstances;
 
     systemd.services = mapAttrs' (name: instance:
       nameValuePair "vpn-credentials-wireguard-${name}" {
@@ -250,10 +204,6 @@ in {
           ${optionalString instance.enableUDP2RAW ''
             MTU = ${toString udp2rawMTU}
           ''}
-          ${concatStringsSep "\n" (mapAttrsToList (name: value: ''
-              ${name} = ${toString value}
-            '')
-            instance.amneziaWGOptions)}
 
           [Peer]
           Endpoint = $domain:${toString instance.port}

@@ -13,7 +13,6 @@ with lib; let
     options = {
       address = mkOption {
         type = mvLib.types.ipAddress;
-        example = "::";
         description = "Address to listen on.";
       };
 
@@ -107,11 +106,8 @@ in {
         type = types.attrsOf (types.submodule [
           instanceModule
           {
-            config.address = mkDefault (
-              if config.networking.enableIPv6
-              then "::"
-              else "0.0.0.0"
-            );
+            # udp2raw serves a single address family, so "::" would be IPv6-only.
+            options.address = mkOption {default = "0.0.0.0";};
           }
         ]);
         default = {};
