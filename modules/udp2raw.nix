@@ -34,7 +34,7 @@ with lib; let
 
       key = mkOption {
         type = types.str;
-        description = "Shared secret for this tunnel; must be identical on both ends. Only referenced when cipherMode or authMode is not \"none\", so it may be left unset for an unencrypted tunnel (NixOS then errors with a readable \"used but not defined\" message only if a mode does need it). Generate with `openssl rand -base64 32`.";
+        description = "Shared secret; not needed when cipherMode and authMode are \"none\". Generate with `openssl rand -base64 32`.";
       };
 
       cipherMode = mkOption {

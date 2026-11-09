@@ -1,158 +1,202 @@
 {
-  lib,
   config,
+  lib,
   pkgs,
   ...
 }:
 with lib; let
-  cfg = config.multivpn.services.amneziawg;
+  rootCfg = config.multivpn;
+  cfg = rootCfg.protocols.amneziawg;
 
   peerModule = {...}: {
     options = {
-      publicKey = mkOption {
-        type = types.str;
-        description = "Peer's public key.";
-      };
-
-      allowedIPs = mkOption {
-        type = types.listOf types.str;
-        example = ["10.0.0.0/24" "::/0"];
-        description = "Allowed IPs for this peer (wg crypto routing only; kernel routes are the caller's job).";
-      };
-
-      endpoint = mkOption {
+      ipv4 = mkOption {
         type = types.nullOr types.str;
         default = null;
-        example = "vpn.example.com:51820";
-        description = "Peer's endpoint host:port. Omit for peers that only connect inbound.";
+        description = "Peer's private IPv4 address.";
       };
 
-      persistentKeepalive = mkOption {
-        type = types.nullOr types.int;
+      ipv6 = mkOption {
+        type = types.nullOr types.str;
         default = null;
-        description = "PersistentKeepalive interval in seconds.";
+        description = "Peer's private IPv6 address.";
+      };
+
+      publicKey = mkOption {
+        type = types.str;
+        description = "Peer's public key. Generate the private key with `awg genkey`, then get the public key with `awg pubkey`.";
       };
     };
   };
 
-  instanceModule = {...}: {
+  instanceModule = {name, ...}: {
     options = {
+      ipv4 = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "10.0.175.1";
+        description = "Network address and a /24 subnet that AmneziaWG uses.";
+      };
+
+      ipv6 = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "fd80:f700:3bb3::1";
+        description = "Network address and a /64 subnet that AmneziaWG uses.";
+      };
+
+      port = mkOption {
+        type = types.int;
+        description = "UDP port to listen on.";
+      };
+
       privateKeyFile = mkOption {
         type = types.path;
-        description = "WireGuard private key path. Generate with `wg genkey`.";
+        description = "Private key path. Generate with `awg genkey`.";
       };
 
       headerProtectionKeyFile = mkOption {
         type = types.nullOr types.path;
         default = null;
-        description = "AmneziaWG 3 header protection key path; must match on both ends. Generate with `awg genkey`.";
-      };
-
-      listenPort = mkOption {
-        type = types.nullOr types.int;
-        default = null;
-        description = "UDP port to listen on. Omit for client interfaces.";
+        description = "AmneziaWG 3 header protection key path. Generate with `awg genkey`.";
       };
 
       settings = mkOption {
         type = types.attrsOf (types.oneOf [types.str types.int]);
         default = {};
         example = {
-          Jc = 4;
-          S1 = 25;
-          H1 = 1525082495;
+          S1 = 57;
+          S2 = 108;
+          H1 = "856961290-901569238";
         };
-        description = "AmneziaWG obfuscation options (Jc, Jmin, Jmax, S1-S4, H1-H4, I1-I5, ...). Must match on both ends.";
+        description = "AmneziaWG options.";
       };
 
       peers = mkOption {
         type = types.listOf (types.submodule peerModule);
         default = [];
-        description = "WireGuard peers.";
+        description = "AmneziaWG peers.";
+      };
+
+      device = mkOption {
+        type = types.str;
+        internal = true;
+        description = "AmneziaWG device.";
+      };
+    };
+
+    config = {
+      device = "vpn-awg-${name}";
+    };
+  };
+in {
+  options = {
+    multivpn.protocols.amneziawg = {
+      instances = mkOption {
+        type = types.attrsOf (types.submodule instanceModule);
+        default = {};
+        description = "AmneziaWG instances.";
       };
     };
   };
 
-  # Non-secret wg config; PrivateKey is prepended at runtime from
-  # privateKeyFile. Address/MTU/routes are intentionally not set here (awg
-  # rejects them, and routing differs per interface) — do those with
-  # systemd-networkd in the caller.
-  mkConfBody = iface:
-    pkgs.writeText "amneziawg.conf" (concatStringsSep "\n" (
-        optional (iface.listenPort != null) "ListenPort = ${toString iface.listenPort}"
-        ++ mapAttrsToList (k: v: "${k} = ${toString v}") iface.settings
-        ++ concatMap (peer:
-          ["" "[Peer]" "PublicKey = ${peer.publicKey}" "AllowedIPs = ${concatStringsSep ", " peer.allowedIPs}"]
-          ++ optional (peer.endpoint != null) "Endpoint = ${peer.endpoint}"
-          ++ optional (peer.persistentKeepalive != null) "PersistentKeepalive = ${toString peer.persistentKeepalive}")
-        iface.peers
-      )
-      + "\n");
-
-  mkService = dev: iface: let
-    confBody = mkConfBody iface;
-  in {
-    description = "AmneziaWG (userspace) interface ${dev}.";
-    wantedBy = ["multi-user.target"];
-    after = ["network-pre.target"];
-    before = ["network.target"];
-    path = [pkgs.amneziawg-tools];
-    serviceConfig = {
-      # amneziawg-go daemonizes only after the TUN device and UAPI socket are
-      # ready, so once the parent has forked the interface can be configured.
-      Type = "forking";
-      ExecStart = "${getExe pkgs.amneziawg-go} ${dev}";
-      Restart = "on-failure";
-      RestartSec = 5;
-      DynamicUser = true;
-      # Shared by all interfaces, as their UAPI sockets live in the same directory.
-      User = "amneziawg";
-      RuntimeDirectory = "amneziawg";
-      RuntimeDirectoryPreserve = true;
-      AmbientCapabilities =
-        ["CAP_NET_ADMIN"]
-        ++ optional (iface.listenPort != null && iface.listenPort < 1024) "CAP_NET_BIND_SERVICE";
-      LoadCredential =
-        ["private-key:${iface.privateKeyFile}"]
-        ++ optional (iface.headerProtectionKeyFile != null) "header-protection-key:${iface.headerProtectionKeyFile}";
-    };
-    # Apply the wg-level crypto config (private key, peers, AmneziaWG options).
-    postStart = ''
-      awg setconf ${dev} <(
-        echo '[Interface]'
-        printf 'PrivateKey = %s\n' "$(cat "$CREDENTIALS_DIRECTORY/private-key")"
-        if [ -e "$CREDENTIALS_DIRECTORY/header-protection-key" ]; then
-          printf 'HeaderProtectionKey = %s\n' "$(cat "$CREDENTIALS_DIRECTORY/header-protection-key")"
-        fi
-        cat ${confBody}
-      )
-    '';
-  };
-in {
-  options.multivpn.services.amneziawg.interfaces = mkOption {
-    type = types.attrsOf (types.submodule instanceModule);
-    default = {};
-    description = ''
-      AmneziaWG interfaces run via the amneziawg-go userspace daemon. Each entry
-      creates the interface (named by its attribute key) and applies the wg-level
-      crypto with `awg setconf`; assign addresses/MTU/routes yourself with
-      systemd-networkd.
-    '';
-  };
-
   config = {
-    assertions = [
-      {
-        assertion = cfg.interfaces != {} -> config.systemd.network.enable;
-        message = "multivpn: AmneziaWG interfaces require systemd-networkd; set networking.useNetworkd = true.";
+    assertions =
+      optional (cfg.instances != {}) {
+        assertion = config.systemd.network.enable;
+        message = "multivpn: AmneziaWG instances are configured with systemd-networkd; set networking.useNetworkd = true.";
       }
-    ];
+      ++ concatLists (mapAttrsToList (name: instance:
+        [
+          {
+            assertion = instance.ipv4 != null || instance.ipv6 != null;
+            message = "At least one IP address must be set for AmneziaWG instance ${name}.";
+          }
+        ]
+        ++ concatMap (peer: [
+          {
+            assertion = peer.ipv4 != null -> instance.ipv4 != null;
+            message = "The AmneziaWG instance ${name} must have an IPv4 address if a peer has an IPv4 address.";
+          }
+          {
+            assertion = peer.ipv6 != null -> instance.ipv6 != null;
+            message = "The AmneziaWG instance ${name} must have an IPv6 address if a peer has an IPv6 address.";
+          }
+          {
+            assertion = peer.ipv4 != null || peer.ipv6 != null;
+            message = "At least one IP address must be set for each peer of AmneziaWG instance ${name}.";
+          }
+        ])
+        instance.peers)
+      cfg.instances);
 
-    # Make `awg` available for inspecting/debugging the interfaces.
-    environment.systemPackages = mkIf (cfg.interfaces != {}) [pkgs.amneziawg-tools];
+    multivpn = {
+      firewall.vpnInterfaces = mapAttrsToList (name: instance: instance.device) cfg.instances;
 
-    systemd.services =
-      mapAttrs' (dev: iface: nameValuePair "amneziawg-${dev}" (mkService dev iface))
-      cfg.interfaces;
+      services.amneziawg-go.interfaces = mapAttrs' (name: instance:
+        nameValuePair instance.device {
+          inherit (instance) privateKeyFile headerProtectionKeyFile settings;
+          listenPort = instance.port;
+          peers =
+            map (peer: {
+              inherit (peer) publicKey;
+              allowedIPs =
+                optional (peer.ipv4 != null) "${peer.ipv4}/32"
+                ++ optional (peer.ipv6 != null) "${peer.ipv6}/128";
+            })
+            instance.peers;
+        })
+      cfg.instances;
+    };
+
+    networking = {
+      nat.enableIPv6 = mkMerge (mapAttrsToList (name: instance: mkIf (instance.ipv6 != null) true) cfg.instances);
+      firewall.allowedUDPPorts = mapAttrsToList (name: instance: instance.port) cfg.instances;
+    };
+
+    systemd.network.networks = mapAttrs' (name: instance:
+      nameValuePair "40-${instance.device}" {
+        matchConfig.Name = instance.device;
+        address =
+          optional (instance.ipv4 != null) "${instance.ipv4}/24"
+          ++ optional (instance.ipv6 != null) "${instance.ipv6}/64";
+      })
+    cfg.instances;
+
+    systemd.services = mapAttrs' (name: instance:
+      nameValuePair "vpn-credentials-amneziawg-${name}" {
+        description = "Prepare the client credentials for AmneziaWG.";
+        wantedBy = ["multi-user.target"];
+        path = with pkgs; [amneziawg-tools];
+        serviceConfig = {
+          Type = "oneshot";
+          StateDirectory = "vpn-credentials";
+          StateDirectoryMode = "0700";
+          WorkingDirectory = "/var/lib/vpn-credentials";
+        };
+        script = ''
+          dir=amneziawg-${escapeShellArg name}
+          mkdir -p "$dir"
+          domain=${escapeShellArg rootCfg.domain}
+          public=$(awg pubkey < ${escapeShellArg instance.privateKeyFile})
+          ${optionalString (instance.headerProtectionKeyFile != null) ''
+            headerProtectionKey=$(cat ${escapeShellArg instance.headerProtectionKeyFile})
+          ''}
+          cat > "$dir/awg.conf" <<EOF
+          [Interface]
+          PrivateKey = <private key>
+          Address = ${concatStringsSep "," (optional (instance.ipv4 != null) "<ipv4>/32" ++ optional (instance.ipv6 != null) "<ipv6>/128")}
+          ${concatStringsSep "\n" (mapAttrsToList (k: v: "${k} = ${toString v}") instance.settings)}
+          ${optionalString (instance.headerProtectionKeyFile != null) "HeaderProtectionKey = $headerProtectionKey"}
+
+          [Peer]
+          Endpoint = $domain:${toString instance.port}
+          PublicKey = $public
+          AllowedIPs = ${concatStringsSep "," (optional (instance.ipv4 != null) "0.0.0.0/0" ++ optional (instance.ipv6 != null) "::/0")}
+          PersistentKeepalive = 25
+          EOF
+        '';
+      })
+    cfg.instances;
   };
 }

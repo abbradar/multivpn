@@ -9,12 +9,13 @@
       flake.nixosModules.default.imports = [
         ./modules/common.nix
         ./modules/firewall.nix
-        ./modules/amneziawg.nix
+        ./modules/amneziawg-go.nix
         ./modules/udp2raw.nix
         ./modules/iodine.nix
         ./modules/mtprotoproxy.nix
         ./modules/openvpn.nix
         ./modules/wireguard.nix
+        ./modules/amneziawg.nix
         ./modules/xray.nix
         ./modules/vless.nix
         ./modules/vless-reality.nix
