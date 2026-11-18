@@ -30,12 +30,12 @@ in {
 
     services.mtprotoproxy = {
       enable = true;
-      port = port;
-      users.tg = cfg.key;
-      extraConfig = {
-        "TLS_ONLY" = true;
-        "TLS_DOMAIN" = cfg.tlsDomain;
-        "MASK" = false;
+      settings = {
+        PORT = port;
+        USERS.tg = cfg.key;
+        TLS_ONLY = true;
+        TLS_DOMAIN = cfg.tlsDomain;
+        MASK = false;
       };
     };
 
